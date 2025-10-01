@@ -1,68 +1,66 @@
-"use client";
-import { useEffect, useMemo, useState } from "react";
-import { useParams, usePathname } from "next/navigation";
-import AuthGuard from "@/components/AuthGuard";
-import MessageList from "@/components/MessageList";
-import Composer from "@/components/Composer";
-import { supabase } from "@/lib/supabaseClient";
+// app/rooms/[roomId]/page.tsx
+import DiscussionList from "@/components/DiscussionList";
+import DiscussionComposer from "@/components/DiscussionComposer";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 
-function coerceId(
-  roomid: string | string[] | undefined,
-  pathname: string
-): string {
-  if (typeof roomid === "string" && roomid) return roomid;
-  if (Array.isArray(roomid) && roomid.length) return roomid[0]!;
-  const last = pathname.split("/").filter(Boolean).pop();
-  return last ?? "";
-}
+type DiscussionRow = {
+  id: string;
+  title: string;
+  body: string | null;
+  created_at: string;
+};
 
-export default function RoomPage() {
-  const params = useParams<{ roomid?: string | string[] }>();
-  const pathname = usePathname();
-  const id = useMemo(() => coerceId(params?.roomid, pathname), [params, pathname]);
+export default async function RoomPage({
+  params,
+}: { params: { roomId: string } }) {
+  const supabase = createServerComponentClient({ cookies });
 
-  const [roomName, setRoomName] = useState("Room");
+  // 1) Be permissive: select * and use maybeSingle() so we don't 404
+  const { data: room, error: roomError } = await supabase
+    .from("rooms")
+    .select("*")
+    .eq("id", params.roomId)
+    .maybeSingle();
 
-  // Fetch name in background, never block rendering
-  useEffect(() => {
-    if (!id) return;
-    let alive = true;
-    (async () => {
-      const { data } = await supabase
-        .from("rooms")
-        .select("name")
-        .eq("id", id)
-        .maybeSingle();
-      if (!alive) return;
-      if (data?.name) setRoomName(data.name);
-    })();
-    return () => { alive = false; };
-  }, [id]);
+  // 2) Fetch discussions (even if room was null, so we can render a helpful message)
+  const { data: discussions, error: discError } = await supabase
+    .from("discussions")
+    .select("id, title, body, created_at")
+    .eq("room_id", params.roomId)
+    .order("created_at", { ascending: false });
 
-  if (!id) {
-    return (
-      <AuthGuard>
-        <main className="mx-auto max-w-3xl px-4 py-8">
-          <h1 className="text-2xl font-semibold mb-4">Room</h1>
-          <p className="text-gray-600">Loading…</p>
-        </main>
-      </AuthGuard>
-    );
-  }
+  const roomLabel =
+    (room as any)?.name ?? (room as any)?.title ?? "(Room)";
 
   return (
-    <AuthGuard>
-      <main className="mx-auto max-w-3xl px-4 py-8">
-        <h1 className="text-2xl font-semibold mb-4">{roomName}</h1>
-        <div className="rounded-2xl border">
-          <div className="h-[55vh] overflow-y-auto p-4">
-            <MessageList roomId={id} />
-          </div>
-          <div className="border-t p-3">
-            <Composer roomId={id} />
-          </div>
+    <div className="mx-auto max-w-2xl px-4 py-6 space-y-6">
+      <h1 className="text-xl font-semibold">{roomLabel}</h1>
+
+      {/* If the room lookup failed due to RLS or missing row, show why */}
+      {(roomError || !room) && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-700">
+          {roomError
+            ? `Could not load room: ${roomError.message}`
+            : "Room not found (or you don't have permission). You can still create a discussion below if RLS allows it."}
         </div>
-      </main>
-    </AuthGuard>
+      )}
+
+      {/* Composer MUST live on the room page so it has a roomId */}
+      <DiscussionComposer roomId={params.roomId} />
+
+      <h2 className="text-lg font-semibold">Discussions</h2>
+
+      {discError ? (
+        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+          Failed to load discussions: {discError.message}
+        </div>
+      ) : (
+        <DiscussionList
+          roomId={params.roomId}
+          items={(discussions ?? []) as DiscussionRow[]}
+        />
+      )}
+    </div>
   );
 }
