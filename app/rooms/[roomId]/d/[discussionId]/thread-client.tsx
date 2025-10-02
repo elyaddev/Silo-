@@ -1,24 +1,10 @@
 "use client";
 
-import { useRealtimeReplies } from "@/lib/useRealtimeReplies";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-type Discussion = {
-  id: string;
-  title: string;
-  body: string | null;
-  created_at: string;
-};
-
-type Reply = {
-  id: string | number;
-  discussion_id: string;
-  room_id: string;
-  profile_id: string | null;
-  content: string;
-  created_at: string;
-};
+type Discussion = { id: string; title: string; body: string | null; created_at: string };
+type Reply = { id: number | string; content: string; created_at: string };
 
 export default function ThreadClient({
   roomId,
@@ -29,81 +15,110 @@ export default function ThreadClient({
   discussion: Discussion;
   initialReplies: Reply[];
 }) {
-  const { replies, setReplies } = useRealtimeReplies(discussion.id, initialReplies);
   const supabase = createClientComponentClient();
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
+  const [replies, setReplies] = useState<Reply[]>(initialReplies || []);
+  const [content, setContent] = useState("");
+  const [posting, setPosting] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // subscribe to realtime inserts for this discussion
+  useEffect(() => {
+    const channel = supabase
+      .channel(`replies:${discussion.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `discussion_id=eq.${discussion.id}` },
+        (payload) => setReplies((prev) => [...prev, payload.new as Reply]),
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase, discussion.id]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [replies.length]);
 
   async function send() {
-    const content = text.trim();
-    if (!content) return;
-    setSending(true);
-    setText("");
+    const text = content.trim();
+    if (!text) return;
 
-    const tempId = `temp-${crypto.randomUUID()}`;
-    const temp: Reply = {
-      id: tempId,
-      discussion_id: discussion.id,
+    // 1) ensure we actually have a session in this tab
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      alert("You must be signed in to reply.");
+      return;
+    }
+
+    setPosting(true);
+    const { error } = await supabase.from("messages").insert({
       room_id: roomId,
-      profile_id: null,
-      content,
-      created_at: new Date().toISOString(),
-    };
-    setReplies((p) => [...p, temp]);
+      discussion_id: discussion.id,
+      content: text,
+    });
+    setPosting(false);
 
-    const { data, error } = await supabase
-      .from("messages")
-      .insert({ room_id: roomId, discussion_id: discussion.id, content })
-      .select("*")
-      .single();
-
-    setSending(false);
-    if (error || !data) return;
-    setReplies((p) => p.map((r) => (r.id === tempId ? (data as Reply) : r)));
+    if (error) {
+      // surfaces either 401 (no auth) or RLS violations
+      alert(error.message);
+      return;
+    }
+    setContent("");
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6 space-y-6">
-      {/* Question header */}
-      <article className="rounded-2xl border bg-white px-5 py-4 shadow-sm">
-        <h1 className="text-xl sm:text-2xl font-semibold">{discussion.title}</h1>
-        {discussion.body ? <p className="mt-2 whitespace-pre-wrap text-gray-800">{discussion.body}</p> : null}
-        <div className="mt-1 text-[11px] text-gray-400">{new Date(discussion.created_at).toLocaleString()}</div>
-      </article>
+    <div className="mx-auto max-w-2xl px-4 py-8 space-y-6">
+      {/* question card */}
+      <div className="rounded-3xl border bg-white p-6 shadow-sm" style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 60%)" }}>
+        <div className="mb-2">
+          <span className="rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ background: "color-mix(in oklab, var(--color-brand), white 90%)", color: "var(--color-brand)" }}>
+            Question
+          </span>
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight">{discussion.title}</h1>
+        {discussion.body ? <p className="mt-2 text-slate-700">{discussion.body}</p> : null}
+      </div>
 
-      {/* Replies */}
+      {/* replies */}
       <div className="space-y-3">
-        {replies.map((r) => (
-          <div key={r.id} className="ml-3 border-l-2 border-gray-200 pl-4">
-            <div className="rounded-xl bg-gray-100 px-4 py-3">
-              <p className="whitespace-pre-wrap text-[15px] text-gray-800 leading-relaxed">{r.content}</p>
-              <div className="mt-1 text-[11px] text-gray-400">{new Date(r.created_at).toLocaleString()}</div>
+        {replies.map((m) => (
+          <div key={m.id} className="rounded-2xl border bg-white p-4" style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 70%)", boxShadow: "0 2px 10px rgba(255,122,0,0.06)" }}>
+            <div className="flex gap-3">
+              <div className="mt-1 h-5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--color-accent)" }} />
+              <div className="min-w-0">
+                <p className="text-[15px] text-slate-800">{m.content}</p>
+                <div className="mt-1 text-[11px] text-slate-500">{new Date(m.created_at).toLocaleString()}</div>
+              </div>
             </div>
           </div>
         ))}
+        <div ref={bottomRef} />
       </div>
 
-      {/* Reply box */}
-      <form
-        onSubmit={(e) => { e.preventDefault(); send(); }}
-        className="sticky bottom-4 bg-transparent"
-      >
-        <div className="rounded-xl border bg-white p-3 flex gap-2">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
+      {/* composer */}
+      <div className="rounded-2xl border bg-white p-4">
+        <div className="flex gap-2">
+          <input
+            type="text"
             placeholder="Write a reply…"
-            rows={2}
-            className="flex-1 resize-y outline-none"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            className="w-full rounded-xl border px-4 py-2 outline-none"
+            style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 70%)" }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
           />
-          <button
-            disabled={sending || !text.trim()}
-            className="shrink-0 rounded-xl border px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
-          >
-            Reply
+          <button onClick={send} disabled={posting || !content.trim()} className="btn btn-primary shrink-0 disabled:opacity-50">
+            {posting ? "Sending…" : "Reply"}
           </button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

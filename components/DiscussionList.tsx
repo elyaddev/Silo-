@@ -1,26 +1,20 @@
 "use client";
 import Link from "next/link";
 
-type Discussion = {
-  id: string;
-  title: string;
-  body: string | null;
-  created_at: string;
-};
+export default function DiscussionList({ roomId, items }: { roomId: string; items: any[] }) {
+  if (!items?.length) return <p className="text-slate-500">No discussions yet — be first!</p>;
 
-export default function DiscussionList({ roomId, items }: { roomId: string; items: Discussion[] }) {
-  if (!items.length) return <p className="text-gray-500">No discussions yet — start one!</p>;
   return (
-    <div className="space-y-3">
+    <div className="grid gap-3">
       {items.map((d) => (
         <Link
           key={d.id}
           href={`/rooms/${roomId}/d/${d.id}`}
-          className="block rounded-2xl border bg-white px-4 py-3 hover:bg-gray-50"
+          className="block rounded-2xl border border-orange-100 bg-white p-4 hover:shadow-[0_4px_14px_rgba(255,122,0,0.08)] hover:-translate-y-[1px] transition"
         >
-          <h3 className="font-semibold">{d.title}</h3>
-          {d.body ? <p className="mt-1 line-clamp-2 text-sm text-gray-700">{d.body}</p> : null}
-          <div className="mt-1 text-[11px] text-gray-400">{new Date(d.created_at).toLocaleString()}</div>
+          <h3 className="text-[17px] font-semibold text-[var(--color-text)]">{d.title}</h3>
+          {d.body && <p className="text-sm text-slate-600 mt-1">{d.body}</p>}
+          <div className="mt-2 text-xs text-slate-400">{new Date(d.created_at).toLocaleString()}</div>
         </Link>
       ))}
     </div>

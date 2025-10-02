@@ -1,13 +1,63 @@
 @import "tailwindcss";
 
-:root {
-  --background: 255 255 255;
-  --foreground: 15 18 25;
+/* -------- Brand tokens (Tailwind v4 CSS-first) -------- */
+@theme {
+  /* Brand colors */
+  --color-brand: #ff7a00; /* vivid orange */
+  --color-accent: #22c55e; /* green accent */
+  --color-surface: #ffffff;
+  --color-surface-2: #fef9f4; /* soft warm background */
+  --color-text: #1e293b; /* slate-900 */
+  --shadow-soft: 0 4px 14px rgba(255, 122, 0, 0.08);
 }
 
-body {
-  background-color: rgb(var(--background));
-  color: rgb(var(--foreground));
+/* Base page bg/text (works with Tailwind utilities) */
+html, body {
+  background: var(--color-surface);
+  color: rgb(17 24 39); /* slate-900 */
 }
 
-.container { max-width: 1200px; }
+/* -------- Reusable utilities -------- */
+/* You can use these like normal classes: btn, btn-primary, card, link */
+
+.btn {
+  @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-xl transition;
+  box-shadow: var(--shadow-soft);
+}
+.btn-primary {
+  background: var(--color-brand);
+  color: white;
+}
+.btn-primary:hover { filter: brightness(1.05); }
+
+.btn-ghost {
+  @apply border rounded-xl;
+  border-color: color-mix(in oklab, var(--color-brand), white 70%);
+  color: rgb(17 24 39);
+}
+.btn-ghost:hover { background: color-mix(in oklab, var(--color-brand), white 92%); }
+
+.card {
+  @apply rounded-2xl border border-orange-100 bg-white shadow-sm transition hover:shadow-[var(--shadow-soft)] hover:-translate-y-[2px];
+}
+
+.btn-primary {
+  background: var(--color-brand);
+  color: white;
+  @apply px-4 py-2 rounded-xl font-medium transition;
+}
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+.btn-primary:disabled {
+  opacity: 0.6;
+}
+
+.link {
+  color: var(--color-brand);
+}
+.link:hover {
+  text-decoration: underline;
+}
+
+

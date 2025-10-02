@@ -1,69 +1,51 @@
 "use client";
-
 import { useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { useRouter } from "next/navigation";
 
 export default function DiscussionComposer({ roomId }: { roomId: string }) {
   const supabase = createClientComponentClient();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [sending, setSending] = useState(false);
-  const router = useRouter();
+  const [loading, setLoading] = useState(false);
 
-  async function createDiscussion() {
-    const t = title.trim();
-    const b = body.trim();
-    if (!t) return;
-
-    setSending(true);
-
+  async function post() {
+    if (!title.trim()) return;
+    setLoading(true);
     const { data, error } = await supabase
       .from("discussions")
-      .insert({ room_id: roomId, title: t, body: b || null })
+      .insert({ room_id: roomId, title, body })
       .select("id")
       .single();
-
-    setSending(false);
-
-    if (error || !data) {
-      console.error("Create discussion failed:", error);
-      alert(error?.message ?? "Could not create discussion");
-      return;
-    }
-
-    setTitle("");
-    setBody("");
-    router.push(`/rooms/${roomId}/d/${data.id}`);
+    setLoading(false);
+    if (error) return alert(error.message);
+    if (data?.id) window.location.href = `/rooms/${roomId}/d/${data.id}`;
   }
 
   return (
-    <form
-      onSubmit={(e) => { e.preventDefault(); createDiscussion(); }}
-      className="rounded-2xl border bg-white p-4 space-y-2"
-    >
+    <div className="card p-5 space-y-2">
+      <h2 className="text-lg font-semibold text-[var(--color-brand)]">Start a new discussion</h2>
       <input
+        className="rounded-xl border border-orange-200 px-4 py-2 w-full"
+        placeholder="What's on your mind?"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="Start a new discussion — question (headline)"
-        className="w-full rounded-xl border px-3 py-2 outline-none"
       />
       <textarea
+        className="rounded-xl border border-orange-200 px-4 py-2 w-full"
+        rows={4}
+        placeholder="Add some context (optional)"
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        placeholder="Optional details / context"
-        rows={3}
-        className="w-full rounded-xl border px-3 py-2 outline-none resize-y"
       />
       <div className="flex justify-end">
         <button
-          type="submit"
-          disabled={sending || !title.trim()}
-          className="rounded-xl border px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
+          disabled={loading || !title.trim()}
+          onClick={post}
+          className="btn-primary disabled:opacity-50"
         >
-          {sending ? "Posting…" : "Post"}
+          {loading ? "Posting..." : "Post"}
         </button>
       </div>
-    </form>
+    </div>
   );
 }
