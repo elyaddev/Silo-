@@ -1,14 +1,12 @@
 // lib/supabaseClient.ts
-"use client";
+'use client';
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-/**
- * Single, shared browser client.
- * Do NOT create more Supabase clients elsewhere.
- */
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
+export { supabase };
 export default supabase;
