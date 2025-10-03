@@ -1,81 +1,77 @@
 "use client";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import Logo from "@/components/Logo";
-import { Menu, X } from "lucide-react";
-import NavAuth from "@/components/NavAuth";
-
-const NAV = [
-  { id: "home", label: "Home", href: "/" },
-  { id: "rooms", label: "Rooms", href: "/rooms" },
-  { id: "silo-pro", label: "Silo Pro", href: "/silo-pro" },
-  { id: "contact", label: "Contact", href: "/contact" },
-];
 
 export default function Navbar() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
-  const isActive = (href: string) => pathname === href;
+  const links = [
+    { href: "/", label: "Home" },
+    { href: "/rooms", label: "Rooms" },
+    { href: "/silo-pro", label: "Silo Pro" },
+    { href: "/contact", label: "Contact" },
+    { href: "/account", label: "Account" },
+  ];
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-white/70 backdrop-blur">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2" aria-label="Athlete Chat home">
-          <Logo />
-          <span className="sr-only">Athlete Chat</span>
+    <nav className="sticky top-0 z-50 w-full border-b border-gray-200 bg-[#FFF7EF]/90 backdrop-blur-sm">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        {/* Logo */}
+        <Link
+          href="/"
+          className="flex items-center font-extrabold text-3xl tracking-tight"
+        >
+          <span className="text-[#F58220]">S</span>
+          <span className="text-slate-900 ml-1">ilo</span>
         </Link>
 
-        {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-6">
-          {NAV.map((item) => (
+        {/* Desktop links */}
+        <div className="hidden md:flex items-center space-x-8 font-medium">
+          {links.map(({ href, label }) => (
             <Link
-              key={item.id}
-              href={item.href}
-              aria-current={isActive(item.href) ? "page" : undefined}
-              className={`text-sm font-medium transition-opacity hover:opacity-100 ${
-                isActive(item.href) ? "opacity-100" : "opacity-70"
+              key={href}
+              href={href}
+              className={`transition-colors hover:text-[#F58220] ${
+                pathname === href ? "text-[#F58220]" : "text-gray-800"
               }`}
             >
-              {item.label}
+              {label}
             </Link>
           ))}
-          <NavAuth />
-        </nav>
+        </div>
 
-        {/* Mobile menu toggle */}
+        {/* Mobile menu button */}
         <button
-          className="md:hidden rounded p-2"
-          onClick={() => setOpen((v) => !v)}
-          aria-label={open ? "Close menu" : "Open menu"}
-          aria-expanded={open}
+          className="md:hidden flex flex-col space-y-1.5"
+          onClick={() => setIsOpen((v) => !v)}
+          aria-label="Toggle menu"
         >
-          {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          <span className="block h-0.5 w-6 bg-gray-800" />
+          <span className="block h-0.5 w-6 bg-gray-800" />
+          <span className="block h-0.5 w-6 bg-gray-800" />
         </button>
       </div>
 
-      {/* Mobile sheet */}
-      {open && (
-        <div className="md:hidden border-t bg-white/90 backdrop-blur">
-          <div className="mx-auto max-w-6xl px-4 py-3 flex flex-col gap-2">
-            {NAV.map((item) => (
-              <Link
-                key={item.id}
-                href={item.href}
-                onClick={() => setOpen(false)}
-                aria-current={isActive(item.href) ? "page" : undefined}
-                className={`py-2 ${isActive(item.href) ? "font-semibold" : "text-gray-700"}`}
-              >
-                {item.label}
-              </Link>
-            ))}
-            <div className="pt-2">
-              <NavAuth />
-            </div>
-          </div>
+      {/* Mobile dropdown */}
+      {isOpen && (
+        <div className="md:hidden flex flex-col items-center space-y-3 py-4 bg-[#FFF7EF] border-t border-gray-200">
+          {links.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              onClick={() => setIsOpen(false)}
+              className={`transition-colors hover:text-[#F58220] ${
+                pathname === href ? "text-[#F58220]" : "text-gray-800"
+              }`}
+            >
+              {label}
+            </Link>
+          ))}
         </div>
       )}
-    </header>
+    </nav>
   );
 }

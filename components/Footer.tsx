@@ -1,12 +1,13 @@
 // components/Footer.tsx
 export default function Footer() {
   return (
-    <footer className="border-t bg-white">
+    <footer className="border-t bg-[var(--color-surface)]">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 py-8 grid gap-6 sm:grid-cols-3">
         <div className="space-y-2">
-          <div className="font-semibold">Athlete Chat</div>
+          {/* Update brand name for the footer */}
+          <div className="font-semibold">Silo</div>
           <p className="text-sm text-gray-600">
-            Tools and rooms for student-athletes.
+            Tools and rooms for student‑athletes.
           </p>
         </div>
 
@@ -32,7 +33,7 @@ export default function Footer() {
 
       <div className="border-t">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 text-xs text-gray-500 flex items-center justify-between">
-          <span>© {new Date().getFullYear()} Athlete Chat. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} Silo. All rights reserved.</span>
           <div className="space-x-4">
             <a className="hover:text-gray-700" href="#">Terms</a>
             <a className="hover:text-gray-700" href="#">Privacy</a>

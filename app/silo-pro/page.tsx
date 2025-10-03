@@ -52,8 +52,11 @@ export default function SiloProPage() {
 function Feature({ title, text }: { title: string; text: string }) {
   return (
     <div
-      className="rounded-2xl border bg-white p-4"
-      style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 70%)" }}
+      className="rounded-2xl border p-4"
+      style={{
+        background: "var(--color-surface-2)",
+        borderColor: "color-mix(in oklab, var(--color-brand), white 70%)",
+      }}
     >
       <h3 className="font-semibold">{title}</h3>
       <p className="mt-1 text-slate-600 text-sm">{text}</p>

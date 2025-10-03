@@ -2,11 +2,12 @@
 
 /* -------- Brand tokens (Tailwind v4 CSS-first) -------- */
 @theme {
-  /* Brand colors */
+  /* Brand colours */
   --color-brand: #ff7a00; /* vivid orange */
   --color-accent: #22c55e; /* green accent */
-  --color-surface: #ffffff;
-  --color-surface-2: #fef9f4; /* soft warm background */
+  /* Light, warm surfaces to avoid stark white; matches the brand orange */
+  --color-surface: #fff6ed;
+  --color-surface-2: #fdf4e9; /* slightly deeper warm background */
   --color-text: #1e293b; /* slate-900 */
   --shadow-soft: 0 4px 14px rgba(255, 122, 0, 0.08);
 }
@@ -15,6 +16,8 @@
 html, body {
   background: var(--color-surface);
   color: rgb(17 24 39); /* slate-900 */
+  /* Fun round font with good readability */
+  font-family: 'Trebuchet MS', sans-serif;
 }
 
 /* -------- Reusable utilities -------- */
@@ -38,7 +41,9 @@ html, body {
 .btn-ghost:hover { background: color-mix(in oklab, var(--color-brand), white 92%); }
 
 .card {
-  @apply rounded-2xl border border-orange-100 bg-white shadow-sm transition hover:shadow-[var(--shadow-soft)] hover:-translate-y-[2px];
+  @apply rounded-2xl border border-orange-100 shadow-sm transition hover:shadow-[var(--shadow-soft)] hover:-translate-y-[2px];
+  /* Use the secondary surface colour on cards for a subtle contrast */
+  background: var(--color-surface-2);
 }
 
 .btn-primary {
@@ -59,5 +64,3 @@ html, body {
 .link:hover {
   text-decoration: underline;
 }
-
-

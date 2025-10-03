@@ -8,7 +8,6 @@ export default function ContactPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // TODO: wire up to an API route or Supabase table (feedback)
     setSent(true);
     setEmail("");
     setMsg("");
@@ -25,7 +24,11 @@ export default function ContactPage() {
         </p>
       </header>
 
-      <form onSubmit={onSubmit} className="rounded-3xl border bg-white p-6 space-y-3">
+      <form
+        onSubmit={onSubmit}
+        className="rounded-3xl border p-6 space-y-3"
+        style={{ background: "var(--color-surface-2)" }}
+      >
         <input
           type="email"
           required

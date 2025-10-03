@@ -3,18 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-type Discussion = {
-  id: string;
-  title: string;
-  body: string | null;
-  created_at: string;
-};
-
-type Reply = {
-  id: number | string;
-  content: string;
-  created_at: string;
-};
+type Discussion = { id: string; title: string; body: string | null; created_at: string };
+type Reply = { id: number | string; content: string; created_at: string; profile_id: string | null; username?: string | null };
 
 export default function ThreadClient({
   roomId,
@@ -25,25 +15,67 @@ export default function ThreadClient({
   discussion: Discussion;
   initialReplies: Reply[];
 }) {
-  // Use the shared client; don’t create a new one
   const [replies, setReplies] = useState<Reply[]>(initialReplies || []);
   const [content, setContent] = useState("");
   const [posting, setPosting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Subscribe to new replies via realtime channels
+  // helper to fetch username once and cache it
+  const usernameCache = useRef<Map<string, string>>(new Map());
+
+  async function ensureUsername(profileId: string | null): Promise<string | null> {
+    if (!profileId) return null;
+    const cached = usernameCache.current.get(profileId);
+    if (cached) return cached;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", profileId)
+      .maybeSingle();
+
+    const uname = error ? null : data?.username ?? null;
+    if (uname) usernameCache.current.set(profileId, uname);
+    return uname;
+  }
+
+  // hydrate usernames for initial replies (in case SSR missed any)
+  useEffect(() => {
+    (async () => {
+      const updated = await Promise.all(
+        (replies || []).map(async (r) => {
+          if (r.username || !r.profile_id) return r;
+          const uname = await ensureUsername(r.profile_id);
+          return { ...r, username: uname };
+        })
+      );
+      setReplies(updated);
+    })();
+    // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // subscribe to realtime inserts for this discussion
   useEffect(() => {
     const channel = supabase
       .channel(`replies:${discussion.id}`)
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `discussion_id=eq.${discussion.id}`,
+        { event: "INSERT", schema: "public", table: "messages", filter: `discussion_id=eq.${discussion.id}` },
+        async (payload) => {
+          const m = payload.new as any;
+          const uname = await ensureUsername(m.profile_id ?? null);
+          setReplies((prev) => [
+            ...prev,
+            {
+              id: m.id,
+              content: m.content,
+              created_at: m.created_at,
+              profile_id: m.profile_id ?? null,
+              username: uname ?? null,
+            },
+          ]);
         },
-        (payload) => setReplies((prev) => [...prev, payload.new as Reply]),
       )
       .subscribe();
 
@@ -52,7 +84,6 @@ export default function ThreadClient({
     };
   }, [discussion.id]);
 
-  // Scroll to bottom when a new reply arrives
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [replies.length]);
@@ -61,10 +92,7 @@ export default function ThreadClient({
     const text = content.trim();
     if (!text) return;
 
-    // Check that the user has a session via the shared client
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       alert("You must be signed in to reply.");
       return;
@@ -75,11 +103,11 @@ export default function ThreadClient({
       room_id: roomId,
       discussion_id: discussion.id,
       content: text,
+      // profile_id will be auto-filled by trigger; no need to send it
     });
     setPosting(false);
 
     if (error) {
-      // Show RLS or auth errors
       alert(error.message);
       return;
     }
@@ -91,9 +119,7 @@ export default function ThreadClient({
       {/* question card */}
       <div
         className="rounded-3xl border bg-white p-6 shadow-sm"
-        style={{
-          borderColor: "color-mix(in oklab, var(--color-brand), white 60%)",
-        }}
+        style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 60%)" }}
       >
         <div className="mb-2">
           <span
@@ -106,15 +132,11 @@ export default function ThreadClient({
             Question
           </span>
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          {discussion.title}
-        </h1>
-        {discussion.body ? (
-          <p className="mt-2 text-slate-700">{discussion.body}</p>
-        ) : null}
+        <h1 className="text-2xl font-bold tracking-tight">{discussion.title}</h1>
+        {discussion.body ? <p className="mt-2 text-slate-700">{discussion.body}</p> : null}
       </div>
 
-      {/* replies list */}
+      {/* replies */}
       <div className="space-y-3">
         {replies.map((m) => (
           <div
@@ -126,15 +148,14 @@ export default function ThreadClient({
             }}
           >
             <div className="flex gap-3">
-              <div
-                className="mt-1 h-5 w-1.5 shrink-0 rounded-full"
-                style={{ background: "var(--color-accent)" }}
-              />
+              <div className="mt-1 h-5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--color-accent)" }} />
               <div className="min-w-0">
-                <p className="text-[15px] text-slate-800">{m.content}</p>
-                <div className="mt-1 text-[11px] text-slate-500">
-                  {new Date(m.created_at).toLocaleString()}
+                {/* USERNAME LINE */}
+                <div className="text-[12px] font-medium text-slate-600">
+                  {m.username ? `@${m.username}` : 'anonymous'}
                 </div>
+                <p className="text-[15px] text-slate-800 mt-0.5">{m.content}</p>
+                <div className="mt-1 text-[11px] text-slate-500">{new Date(m.created_at).toLocaleString()}</div>
               </div>
             </div>
           </div>
@@ -142,7 +163,7 @@ export default function ThreadClient({
         <div ref={bottomRef} />
       </div>
 
-      {/* reply composer */}
+      {/* composer */}
       <div className="rounded-2xl border bg-white p-4">
         <div className="flex gap-2">
           <input
@@ -151,9 +172,7 @@ export default function ThreadClient({
             value={content}
             onChange={(e) => setContent(e.target.value)}
             className="w-full rounded-xl border px-4 py-2 outline-none"
-            style={{
-              borderColor: "color-mix(in oklab, var(--color-brand), white 70%)",
-            }}
+            style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 70%)" }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -161,11 +180,7 @@ export default function ThreadClient({
               }
             }}
           />
-          <button
-            onClick={send}
-            disabled={posting || !content.trim()}
-            className="btn btn-primary shrink-0 disabled:opacity-50"
-          >
+          <button onClick={send} disabled={posting || !content.trim()} className="btn btn-primary shrink-0 disabled:opacity-50">
             {posting ? "Sending…" : "Reply"}
           </button>
         </div>
