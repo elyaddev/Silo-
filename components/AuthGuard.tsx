@@ -1,26 +1,29 @@
 "use client";
-import { useEffect, useState, ReactNode } from "react";
+
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthGuard({ children }: { children: ReactNode }) {
+export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    let unsub = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) router.replace("/account");
+      else setReady(true);
+    }).data?.subscription;
+
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return router.replace("/login");
-      setReady(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) router.replace("/account");
+      else setReady(true);
     })();
+
+    return () => unsub?.unsubscribe();
   }, [router]);
 
-  if (!ready) {
-    return (
-      <main className="min-h-[50vh] grid place-items-center">
-        <p>Checking access…</p>
-      </main>
-    );
-  }
+  if (!ready) return null; // simple loading gate
+
   return <>{children}</>;
 }

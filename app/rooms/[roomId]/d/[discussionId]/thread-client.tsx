@@ -1,10 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import supabase from "@/lib/supabaseClient";
+import { logActivity } from "@/lib/logActivity";
 
 type Discussion = { id: string; title: string; body: string | null; created_at: string };
-type Reply = { id: number | string; content: string; created_at: string; profile_id: string | null; username?: string | null };
+type Reply = {
+  id: number | string;
+  content: string;
+  created_at: string;
+  profile_id: string | null;
+  username?: string | null;
+};
 
 export default function ThreadClient({
   roomId,
@@ -18,10 +25,19 @@ export default function ThreadClient({
   const [replies, setReplies] = useState<Reply[]>(initialReplies || []);
   const [content, setContent] = useState("");
   const [posting, setPosting] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // helper to fetch username once and cache it
+  // cache usernames
   const usernameCache = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    // who am I?
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setCurrentUserId(session?.user?.id ?? null);
+    })();
+  }, []);
 
   async function ensureUsername(profileId: string | null): Promise<string | null> {
     if (!profileId) return null;
@@ -39,7 +55,7 @@ export default function ThreadClient({
     return uname;
   }
 
-  // hydrate usernames for initial replies (in case SSR missed any)
+  // hydrate any missing usernames once
   useEffect(() => {
     (async () => {
       const updated = await Promise.all(
@@ -51,17 +67,21 @@ export default function ThreadClient({
       );
       setReplies(updated);
     })();
-    // run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // subscribe to realtime inserts for this discussion
+  // realtime subscription for new replies
   useEffect(() => {
     const channel = supabase
       .channel(`replies:${discussion.id}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `discussion_id=eq.${discussion.id}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `discussion_id=eq.${discussion.id}`,
+        },
         async (payload) => {
           const m = payload.new as any;
           const uname = await ensureUsername(m.profile_id ?? null);
@@ -75,7 +95,7 @@ export default function ThreadClient({
               username: uname ?? null,
             },
           ]);
-        },
+        }
       )
       .subscribe();
 
@@ -99,24 +119,40 @@ export default function ThreadClient({
     }
 
     setPosting(true);
-    const { error } = await supabase.from("messages").insert({
-      room_id: roomId,
-      discussion_id: discussion.id,
-      content: text,
-      // profile_id will be auto-filled by trigger; no need to send it
-    });
+
+    const { data, error } = await supabase
+      .from("messages")
+      .insert({
+        room_id: roomId,
+        discussion_id: discussion.id,
+        content: text,
+      })
+      .select("id, content, created_at, profile_id")
+      .single();
+
     setPosting(false);
 
     if (error) {
       alert(error.message);
       return;
     }
+
     setContent("");
+
+    // log activity but don't block UX
+    try {
+      await logActivity("reply_created", {
+        roomId,
+        discussionId: discussion.id,
+        replyId: data?.id ?? null,
+        excerpt: text.slice(0, 140),
+      });
+    } catch {}
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 space-y-6">
-      {/* question card */}
+    <div className="mx-auto max-w-4xl px-6 py-8 space-y-8">
+      {/* Question card (unchanged look, slightly wider by container) */}
       <div
         className="rounded-3xl border bg-white p-6 shadow-sm"
         style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 60%)" }}
@@ -132,46 +168,82 @@ export default function ThreadClient({
             Question
           </span>
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">{discussion.title}</h1>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{discussion.title}</h1>
         {discussion.body ? <p className="mt-2 text-slate-700">{discussion.body}</p> : null}
       </div>
 
-      {/* replies */}
+      {/* Replies */}
       <div className="space-y-3">
-        {replies.map((m) => (
-          <div
-            key={m.id}
-            className="rounded-2xl border bg-white p-4"
-            style={{
-              borderColor: "color-mix(in oklab, var(--color-brand), white 70%)",
-              boxShadow: "0 2px 10px rgba(255,122,0,0.06)",
-            }}
-          >
-            <div className="flex gap-3">
-              <div className="mt-1 h-5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--color-accent)" }} />
-              <div className="min-w-0">
-                {/* USERNAME LINE */}
-                <div className="text-[12px] font-medium text-slate-600">
-                  {m.username ? `@${m.username}` : 'anonymous'}
+        {replies.map((m) => {
+          const isMine = !!currentUserId && m.profile_id === currentUserId;
+
+          // visual differences for your own messages
+          const bubbleClasses = isMine
+            ? "bg-orange-50 border-orange-200"
+            : "bg-white";
+          const borderColor = isMine
+            ? "color-mix(in oklab, var(--color-brand), white 40%)"
+            : "color-mix(in oklab, var(--color-brand), white 70%)";
+
+          return (
+            <div
+              key={m.id}
+              className={[
+                "rounded-2xl border p-4 shadow-sm transition",
+                bubbleClasses,
+                isMine ? "ml-auto" : "",
+                // keep a little width limit so very long lines are readable
+                "max-w-full",
+              ].join(" ")}
+              style={{ borderColor }}
+            >
+              <div className={["flex gap-3", isMine ? "justify-end" : ""].join(" ")}>
+                {/* Accent bar (left when others; right when mine) */}
+                <div
+                  className={[
+                    "mt-1 h-5 w-1.5 shrink-0 rounded-full",
+                    isMine ? "order-2" : "order-1",
+                  ].join(" ")}
+                  style={{ background: isMine ? "var(--color-brand)" : "var(--color-accent)" }}
+                />
+                <div className={isMine ? "text-right" : "text-left"}>
+                  {/* Bigger username and a tiny “you” tag on your own */}
+                  <div className="text-[13px] md:text-sm font-semibold text-slate-800 flex items-center gap-2 justify-start">
+                    <span className={isMine ? "ml-auto" : ""}>
+                      {m.username ? `@${m.username}` : "anonymous"}
+                    </span>
+                    {isMine && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
+                        you
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-[15px] md:text-[16px] leading-relaxed text-slate-800 mt-1">
+                    {m.content}
+                  </p>
+
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    {new Date(m.created_at).toLocaleString()}
+                  </div>
                 </div>
-                <p className="text-[15px] text-slate-800 mt-0.5">{m.content}</p>
-                <div className="mt-1 text-[11px] text-slate-500">{new Date(m.created_at).toLocaleString()}</div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={bottomRef} />
       </div>
 
-      {/* composer */}
-      <div className="rounded-2xl border bg-white p-4">
+      {/* Composer (unchanged layout; fits the wider page) */}
+      <div className="rounded-2xl border bg-white p-4"
+           style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 70%)" }}>
         <div className="flex gap-2">
           <input
             type="text"
             placeholder="Write a reply…"
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            className="w-full rounded-xl border px-4 py-2 outline-none"
+            className="w-full rounded-xl border px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500"
             style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 70%)" }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -180,7 +252,11 @@ export default function ThreadClient({
               }
             }}
           />
-          <button onClick={send} disabled={posting || !content.trim()} className="btn btn-primary shrink-0 disabled:opacity-50">
+          <button
+            onClick={send}
+            disabled={posting || !content.trim()}
+            className="btn btn-primary shrink-0 disabled:opacity-50"
+          >
             {posting ? "Sending…" : "Reply"}
           </button>
         </div>

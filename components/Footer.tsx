@@ -1,44 +1,65 @@
 // components/Footer.tsx
+'use client';
+
+import Link from 'next/link';
+
 export default function Footer() {
   return (
-    <footer className="border-t bg-[var(--color-surface)]">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 py-8 grid gap-6 sm:grid-cols-3">
-        <div className="space-y-2">
-          {/* Update brand name for the footer */}
-          <div className="font-semibold">Silo</div>
-          <p className="text-sm text-gray-600">
-            Tools and rooms for student‑athletes.
+    <footer className="bg-neutral-900 text-neutral-300">
+      <div className="max-w-7xl mx-auto px-4 py-12 grid gap-8 sm:grid-cols-3">
+        {/* Column 1 */}
+        <div>
+          <h3 className="text-white text-lg font-semibold">Silo</h3>
+          <p className="mt-2 text-sm text-neutral-400">
+            Tools and rooms for student-athletes.
           </p>
         </div>
-
-        <nav className="text-sm">
-          <div className="font-medium mb-2">Product</div>
-          <ul className="space-y-1 text-gray-600">
-            <li><a className="hover:text-gray-900" href="/">Home</a></li>
-            <li><a className="hover:text-gray-900" href="/rooms">Rooms</a></li>
-            <li><a className="hover:text-gray-900" href="/silo-pro">Silo-Pro</a></li>
-            <li><a className="hover:text-gray-900" href="/contact">Contact</a></li>
+        {/* Column 2 */}
+        <div>
+          <h4 className="text-neutral-100 text-sm font-semibold uppercase tracking-wide">
+            Product
+          </h4>
+          <ul className="mt-3 space-y-1">
+            <li>
+              <Link href="/" className="hover:text-orange-400 transition">Home</Link>
+            </li>
+            <li>
+              <Link href="/rooms" className="hover:text-orange-400 transition">Rooms</Link>
+            </li>
+            <li>
+              <Link href="/silo-pro" className="hover:text-orange-400 transition">Silo Pro</Link>
+            </li>
+            <li>
+              <Link href="/account" className="hover:text-orange-400 transition">Account</Link>
+            </li>
           </ul>
-        </nav>
-
-        <div className="text-sm">
-          <div className="font-medium mb-2">Stay in touch</div>
-          <ul className="space-y-1 text-gray-600">
-            <li><a className="hover:text-gray-900" href="mailto:hello@athletechat.app">hello@athletechat.app</a></li>
-            <li><a className="hover:text-gray-900" href="#">X / Twitter</a></li>
-            <li><a className="hover:text-gray-900" href="#">Instagram</a></li>
+        </div>
+        {/* Column 3 */}
+        <div>
+          <h4 className="text-neutral-100 text-sm font-semibold uppercase tracking-wide">
+            Stay in touch
+          </h4>
+          <ul className="mt-3 space-y-1">
+            <li>
+              <a href="mailto:hello@athletechat.app" className="hover:text-orange-400 transition">
+                hello@athletechat.app
+              </a>
+            </li>
+            <li>
+              <a href="https://twitter.com" className="hover:text-orange-400 transition">
+                X / Twitter
+              </a>
+            </li>
+            <li>
+              <a href="https://instagram.com" className="hover:text-orange-400 transition">
+                Instagram
+              </a>
+            </li>
           </ul>
         </div>
       </div>
-
-      <div className="border-t">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-4 text-xs text-gray-500 flex items-center justify-between">
-          <span>© {new Date().getFullYear()} Silo. All rights reserved.</span>
-          <div className="space-x-4">
-            <a className="hover:text-gray-700" href="#">Terms</a>
-            <a className="hover:text-gray-700" href="#">Privacy</a>
-          </div>
-        </div>
+      <div className="border-t border-neutral-800 py-4 text-center text-xs text-neutral-500">
+        &copy; {new Date().getFullYear()} Silo. All rights reserved.
       </div>
     </footer>
   );

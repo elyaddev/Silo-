@@ -1,79 +1,74 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 export default function AccountPage() {
-  const supabase = createClientComponentClient();
-  const [session, setSession] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let mounted = true;
-
-    const load = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (mounted) setSession(data.session);
+    const getUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setUser(user);
       setLoading(false);
     };
+    getUser();
 
-    load();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
-      setSession(sess);
+    // Listen for auth changes
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
     });
 
     return () => {
-      mounted = false;
-      sub?.subscription?.unsubscribe();
+      listener.subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, []);
 
   if (loading) {
     return (
-      <main className="min-h-[60vh] flex items-center justify-center">
-        <p className="text-gray-500">Loading…</p>
+      <main className="flex flex-col items-center justify-center h-screen">
+        <p className="text-gray-600">Loading...</p>
       </main>
     );
   }
 
-  if (!session) {
+  if (!user) {
     return (
-      <main className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
-        <h1 className="text-2xl font-semibold">Account</h1>
-        <p className="text-gray-600">Not signed in</p>
-        <Link href="/login">
-          <button className="px-6 py-2 rounded-full bg-[#f58220] text-white hover:bg-[#e87012] transition">
-            Sign in
-          </button>
-        </Link>
+      <main className="flex flex-col items-center justify-center h-screen">
+        <h1 className="text-2xl font-semibold mb-4">Account</h1>
+        <p className="mb-6 text-gray-600">Not signed in</p>
+        <button
+          onClick={() => supabase.auth.signInWithOAuth({ provider: "google" })}
+          className="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-2 rounded-lg shadow"
+        >
+          Sign in
+        </button>
       </main>
     );
   }
-
-  const email = session.user?.email;
 
   return (
-    <main className="min-h-[60vh] flex flex-col items-center py-16 gap-6">
-      <h1 className="text-2xl font-semibold">Account</h1>
-      <p className="text-gray-700">Signed in as {email}</p>
+    <main className="flex flex-col items-center justify-center h-screen bg-orange-50">
+      <h1 className="text-2xl font-semibold mb-4">Account</h1>
+      <p className="text-gray-800 mb-8">Signed in as {user.email}</p>
 
-      <div className="flex gap-3">
-        <Link href="/account/activity">
-          <button className="px-6 py-2 rounded-full border border-[#f58220] text-[#f58220] hover:bg-[#f58220] hover:text-white transition">
-            My Activity
-          </button>
+      <div className="flex gap-4">
+        <Link
+          href="/account/activity"
+          className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg shadow"
+        >
+          My Activity
         </Link>
 
         <button
-          onClick={async () => {
-            await supabase.auth.signOut();
-            window.location.href = "/";
-          }}
-          className="px-6 py-2 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+          onClick={() => supabase.auth.signOut()}
+          className="border border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white px-6 py-2 rounded-lg shadow"
         >
-            Sign out
+          Sign out
         </button>
       </div>
     </main>
