@@ -13,7 +13,6 @@ export default function DiscussionComposer({ roomId }: { roomId: string }) {
     if (!title.trim()) return;
     setLoading(true);
 
-    // make sure user is signed in (optional UX guard)
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) {
       setLoading(false);
@@ -22,7 +21,7 @@ export default function DiscussionComposer({ roomId }: { roomId: string }) {
     }
 
     const { data, error } = await supabase
-      .from("discussions") // unchanged
+      .from("discussions")
       .insert({ room_id: roomId, title, body })
       .select("id, title")
       .single();
@@ -34,7 +33,6 @@ export default function DiscussionComposer({ roomId }: { roomId: string }) {
       return;
     }
 
-    // ✅ log activity (new)
     try {
       await logActivity("post_created", {
         roomId,
@@ -42,9 +40,7 @@ export default function DiscussionComposer({ roomId }: { roomId: string }) {
         title: data?.title ?? null,
         excerpt: (title || body || "").slice(0, 140),
       });
-    } catch {
-      // don't block navigation if logging fails
-    }
+    } catch {}
 
     if (data?.id) {
       window.location.href = `/rooms/${roomId}/d/${data.id}`;

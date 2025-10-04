@@ -1,39 +1,19 @@
-"use client";
+// components/Logo.tsx
+'use client';
 
-import Link from "next/link";
+import Link from 'next/link';
 
-/**
- * Slightly larger brand "S" (orange) with gentle overall letter-spacing.
- * We use a small positive letterSpacing so the word reads cleaner at larger sizes.
- */
-export default function Logo({ className = "" }: { className?: string }) {
-  const root =
-    ["inline-flex items-baseline leading-none select-none", className]
-      .filter(Boolean)
-      .join(" ");
-
+export default function Logo({ className = '' }: { className?: string }) {
+  const root = ['inline-flex items-baseline leading-none select-none', className].filter(Boolean).join(' ');
   return (
-    <Link
-      href="/"
-      aria-label="Silo home"
-      className={root}
-      style={{ letterSpacing: "0.02em" }}   // ← a touch more space between letters
-    >
+    <Link href="/" aria-label="Silo home" className={root} style={{ letterSpacing: '0.03em' }}>
       <span
-        className="
-          text-[var(--color-brand)]
-          font-extrabold
-          text-2xl md:text-3xl
-        "
+        className="text-[var(--color-brand)] font-extrabold text-3xl md:text-4xl"
       >
         S
       </span>
       <span
-        className="
-          text-neutral-900
-          font-semibold
-          text-xl md:text-2xl
-        "
+        className="text-neutral-900 font-semibold text-2xl md:text-3xl"
       >
         ilo
       </span>

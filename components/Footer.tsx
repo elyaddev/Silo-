@@ -4,14 +4,15 @@
 import Link from 'next/link';
 
 export default function Footer() {
+  const year = new Date().getFullYear();
   return (
     <footer className="bg-neutral-900 text-neutral-300">
       <div className="max-w-7xl mx-auto px-4 py-12 grid gap-8 sm:grid-cols-3">
         {/* Column 1 */}
         <div>
-          <h3 className="text-white text-lg font-semibold">Silo</h3>
-          <p className="mt-2 text-sm text-neutral-400">
-            Tools and rooms for student-athletes.
+          <h3 className="text-white text-xl font-bold tracking-wide">Silo</h3>
+          <p className="mt-2 text-sm text-neutral-400 max-w-xs">
+            Tools and rooms for student‑athletes.
           </p>
         </div>
         {/* Column 2 */}
@@ -19,18 +20,26 @@ export default function Footer() {
           <h4 className="text-neutral-100 text-sm font-semibold uppercase tracking-wide">
             Product
           </h4>
-          <ul className="mt-3 space-y-1">
+          <ul className="mt-3 space-y-1 text-sm">
             <li>
-              <Link href="/" className="hover:text-orange-400 transition">Home</Link>
+              <Link href="/" className="hover:text-[var(--color-brand)] transition-colors">
+                Home
+              </Link>
             </li>
             <li>
-              <Link href="/rooms" className="hover:text-orange-400 transition">Rooms</Link>
+              <Link href="/rooms" className="hover:text-[var(--color-brand)] transition-colors">
+                Rooms
+              </Link>
             </li>
             <li>
-              <Link href="/silo-pro" className="hover:text-orange-400 transition">Silo Pro</Link>
+              <Link href="/silo-pro" className="hover:text-[var(--color-brand)] transition-colors">
+                Silo Pro
+              </Link>
             </li>
             <li>
-              <Link href="/account" className="hover:text-orange-400 transition">Account</Link>
+              <Link href="/account" className="hover:text-[var(--color-brand)] transition-colors">
+                Account
+              </Link>
             </li>
           </ul>
         </div>
@@ -39,19 +48,19 @@ export default function Footer() {
           <h4 className="text-neutral-100 text-sm font-semibold uppercase tracking-wide">
             Stay in touch
           </h4>
-          <ul className="mt-3 space-y-1">
+          <ul className="mt-3 space-y-1 text-sm">
             <li>
-              <a href="mailto:hello@athletechat.app" className="hover:text-orange-400 transition">
+              <a href="mailto:hello@athletechat.app" className="hover:text-[var(--color-brand)] transition-colors">
                 hello@athletechat.app
               </a>
             </li>
             <li>
-              <a href="https://twitter.com" className="hover:text-orange-400 transition">
+              <a href="https://twitter.com" className="hover:text-[var(--color-accent-secondary)] transition-colors">
                 X / Twitter
               </a>
             </li>
             <li>
-              <a href="https://instagram.com" className="hover:text-orange-400 transition">
+              <a href="https://instagram.com" className="hover:text-[var(--color-accent-secondary)] transition-colors">
                 Instagram
               </a>
             </li>
@@ -59,7 +68,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="border-t border-neutral-800 py-4 text-center text-xs text-neutral-500">
-        &copy; {new Date().getFullYear()} Silo. All rights reserved.
+        © {year} Silo. All rights reserved.
       </div>
     </footer>
   );

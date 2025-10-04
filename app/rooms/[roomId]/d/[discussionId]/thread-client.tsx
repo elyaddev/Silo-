@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import supabase from "@/lib/supabaseClient";
 import { logActivity } from "@/lib/logActivity";
+import ClientTime from "@/components/ClientTime";
 
 type Discussion = { id: string; title: string; body: string | null; created_at: string };
 type Reply = {
@@ -28,13 +29,13 @@ export default function ThreadClient({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // cache usernames
   const usernameCache = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
-    // who am I?
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       setCurrentUserId(session?.user?.id ?? null);
     })();
   }, []);
@@ -55,7 +56,6 @@ export default function ThreadClient({
     return uname;
   }
 
-  // hydrate any missing usernames once
   useEffect(() => {
     (async () => {
       const updated = await Promise.all(
@@ -70,7 +70,6 @@ export default function ThreadClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // realtime subscription for new replies
   useEffect(() => {
     const channel = supabase
       .channel(`replies:${discussion.id}`)
@@ -112,7 +111,9 @@ export default function ThreadClient({
     const text = content.trim();
     if (!text) return;
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     if (!session) {
       alert("You must be signed in to reply.");
       return;
@@ -139,7 +140,6 @@ export default function ThreadClient({
 
     setContent("");
 
-    // log activity but don't block UX
     try {
       await logActivity("reply_created", {
         roomId,
@@ -148,11 +148,13 @@ export default function ThreadClient({
         excerpt: text.slice(0, 140),
       });
     } catch {}
+
+    // Realtime will append the reply; no manual push required.
   }
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8 space-y-8">
-      {/* Question card (unchanged look, slightly wider by container) */}
+      {/* Question card */}
       <div
         className="rounded-3xl border bg-white p-6 shadow-sm"
         style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 60%)" }}
@@ -168,8 +170,12 @@ export default function ThreadClient({
             Question
           </span>
         </div>
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{discussion.title}</h1>
-        {discussion.body ? <p className="mt-2 text-slate-700">{discussion.body}</p> : null}
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+          {discussion.title}
+        </h1>
+        {discussion.body ? (
+          <p className="mt-2 text-slate-700">{discussion.body}</p>
+        ) : null}
       </div>
 
       {/* Replies */}
@@ -177,10 +183,7 @@ export default function ThreadClient({
         {replies.map((m) => {
           const isMine = !!currentUserId && m.profile_id === currentUserId;
 
-          // visual differences for your own messages
-          const bubbleClasses = isMine
-            ? "bg-orange-50 border-orange-200"
-            : "bg-white";
+          const bubbleClasses = isMine ? "bg-orange-50 border-orange-200" : "bg-white";
           const borderColor = isMine
             ? "color-mix(in oklab, var(--color-brand), white 40%)"
             : "color-mix(in oklab, var(--color-brand), white 70%)";
@@ -192,22 +195,21 @@ export default function ThreadClient({
                 "rounded-2xl border p-4 shadow-sm transition",
                 bubbleClasses,
                 isMine ? "ml-auto" : "",
-                // keep a little width limit so very long lines are readable
                 "max-w-full",
               ].join(" ")}
               style={{ borderColor }}
             >
               <div className={["flex gap-3", isMine ? "justify-end" : ""].join(" ")}>
-                {/* Accent bar (left when others; right when mine) */}
                 <div
                   className={[
                     "mt-1 h-5 w-1.5 shrink-0 rounded-full",
                     isMine ? "order-2" : "order-1",
                   ].join(" ")}
-                  style={{ background: isMine ? "var(--color-brand)" : "var(--color-accent)" }}
+                  style={{
+                    background: isMine ? "var(--color-brand)" : "var(--color-accent)",
+                  }}
                 />
                 <div className={isMine ? "text-right" : "text-left"}>
-                  {/* Bigger username and a tiny “you” tag on your own */}
                   <div className="text-[13px] md:text-sm font-semibold text-slate-800 flex items-center gap-2 justify-start">
                     <span className={isMine ? "ml-auto" : ""}>
                       {m.username ? `@${m.username}` : "anonymous"}
@@ -224,7 +226,7 @@ export default function ThreadClient({
                   </p>
 
                   <div className="mt-1 text-[11px] text-slate-500">
-                    {new Date(m.created_at).toLocaleString()}
+                    <ClientTime iso={m.created_at} />
                   </div>
                 </div>
               </div>
@@ -234,9 +236,11 @@ export default function ThreadClient({
         <div ref={bottomRef} />
       </div>
 
-      {/* Composer (unchanged layout; fits the wider page) */}
-      <div className="rounded-2xl border bg-white p-4"
-           style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 70%)" }}>
+      {/* Composer */}
+      <div
+        className="rounded-2xl border bg-white p-4"
+        style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 70%)" }}
+      >
         <div className="flex gap-2">
           <input
             type="text"

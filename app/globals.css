@@ -1,61 +1,57 @@
+/* app/globals.css */
 @import "tailwindcss";
 
-/* -------- Brand tokens (Tailwind v4 CSS-first) -------- */
+/* ----- Colour tokens ----- */
 @theme {
-  /* Brand colours */
-  --color-brand: #ff7a00; /* vivid orange */
-  --color-accent: #22c55e; /* green accent */
-  /* Light, warm surfaces to avoid stark white; matches the brand orange */
-  --color-surface: #fff6ed;
-  --color-surface-2: #fdf4e9; /* slightly deeper warm background */
-  --color-text: #1e293b; /* slate-900 */
-  --shadow-soft: 0 4px 14px rgba(255, 122, 0, 0.08);
+  --color-brand: #ff7a00;           /* vivid orange */
+  --color-accent: #22c55e;          /* existing green accent (optional) */
+  --color-accent-secondary: #3bbce3; /* new teal accent */
+  --color-surface: #fff6ed;         /* warm off‑white */
+  --color-surface-2: #fdf4e9;       /* deeper surface */
+  --color-text: #1e293b;            /* slate‑900 */
+  --shadow-soft: 0 4px 16px rgba(255, 122, 0, 0.08);
 }
 
-/* Base page bg/text (works with Tailwind utilities) */
 html, body {
   background: var(--color-surface);
-  color: rgb(17 24 39); /* slate-900 */
-  /* Fun round font with good readability */
-  font-family: 'Trebuchet MS', sans-serif;
+  color: var(--color-text);
+  font-family: 'Fredoka', 'Trebuchet MS', sans-serif;
+  /* Slightly smoother font rendering */
+  -webkit-font-smoothing: antialiased;
 }
 
-/* -------- Reusable utilities -------- */
-/* You can use these like normal classes: btn, btn-primary, card, link */
-
+/* ----- Utility classes ----- */
 .btn {
-  @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-xl transition;
-  box-shadow: var(--shadow-soft);
+  @apply inline-flex items-center justify-center px-5 py-2.5 text-sm font-medium rounded-xl transition-colors duration-150 ease-in-out shadow;
 }
 .btn-primary {
   background: var(--color-brand);
   color: white;
 }
-.btn-primary:hover { filter: brightness(1.05); }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn-secondary {
+  background: var(--color-accent-secondary);
+  color: white;
+}
+.btn-secondary:hover { filter: brightness(1.1); }
 
 .btn-ghost {
   @apply border rounded-xl;
   border-color: color-mix(in oklab, var(--color-brand), white 70%);
-  color: rgb(17 24 39);
+  color: var(--color-text);
 }
 .btn-ghost:hover { background: color-mix(in oklab, var(--color-brand), white 92%); }
 
 .card {
-  @apply rounded-2xl border border-orange-100 shadow-sm transition hover:shadow-[var(--shadow-soft)] hover:-translate-y-[2px];
-  /* Use the secondary surface colour on cards for a subtle contrast */
+  @apply rounded-3xl border shadow transition-transform duration-150;
+  border-color: color-mix(in oklab, var(--color-brand), white 90%);
   background: var(--color-surface-2);
 }
-
-.btn-primary {
-  background: var(--color-brand);
-  color: white;
-  @apply px-4 py-2 rounded-xl font-medium transition;
-}
-.btn-primary:hover {
-  filter: brightness(1.1);
-}
-.btn-primary:disabled {
-  opacity: 0.6;
+.card:hover {
+  box-shadow: var(--shadow-soft);
+  transform: translateY(-2px);
 }
 
 .link {

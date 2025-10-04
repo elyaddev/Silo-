@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import ClientTime from "@/components/ClientTime";
 
 type Msg = {
   id: string;
@@ -34,23 +35,20 @@ export default function ChatMessages({ messages }: { messages: Msg[] }) {
           {first.content}
         </h2>
         <div className="text-xs text-gray-400">
-          {new Date(first.created_at).toLocaleString()}
+          <ClientTime iso={first.created_at} />
         </div>
       </article>
 
       {/* Replies = answers */}
       <div className="space-y-4">
         {rest.map((m) => (
-          <div
-            key={m.id}
-            className="ml-3 border-l-2 border-gray-200 pl-4"
-          >
+          <div key={m.id} className="ml-3 border-l-2 border-gray-200 pl-4">
             <div className="rounded-xl bg-gray-100 px-4 py-3">
               <p className="whitespace-pre-wrap text-[15px] text-gray-800 leading-relaxed">
                 {m.content}
               </p>
               <div className="mt-1 text-[11px] text-gray-400">
-                {new Date(m.created_at).toLocaleString()}
+                <ClientTime iso={m.created_at} />
               </div>
             </div>
           </div>

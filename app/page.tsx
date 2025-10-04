@@ -1,76 +1,82 @@
+"use client";
+
+import React from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
+import { ArrowRight } from "lucide-react";
 
 export default function HomePage() {
   return (
-    <main className="px-4">
-      {/* HERO */}
-      <section className="mx-auto max-w-4xl py-20 text-center">
-        <div
-          className="mx-auto inline-block rounded-2xl px-3 py-1 text-xs font-medium"
-          style={{ background: "color-mix(in oklab, var(--color-brand), white 88%)", color: "var(--color-brand)" }}
-        >
-          Built for student-athletes
-        </div>
-
-        <h1 className="mt-5 text-4xl sm:text-5xl font-semibold tracking-tight">
-          Anonymous, safe discussions for athletes.
+    <main className="flex flex-col items-center justify-center min-h-screen bg-[#FFF8F2] text-gray-900 px-6">
+      {/* Hero Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 40 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8 }}
+        className="text-center max-w-2xl mt-20"
+      >
+        <h1 className="text-5xl sm:text-6xl font-extrabold text-orange-500 mb-6 font-fredoka">
+          Welcome to <span className="text-gray-900">Silo</span>
         </h1>
-        <p className="mt-4 text-lg text-slate-600">
-          Ask the hard questions. Get honest answers. Your identity stays private.
+
+        <p className="text-lg sm:text-xl text-gray-600 mb-10">
+          A place for athletes to connect, talk, and grow together — all in one safe space.
         </p>
 
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <Link href="/rooms" className="btn btn-primary">Enter rooms</Link>
-          <Link href="/account" className="btn btn-ghost">Sign in</Link>
+        <Link
+          href="/rooms"
+          className="inline-flex items-center gap-2 bg-orange-500 text-white px-6 py-3 rounded-full font-semibold text-lg hover:bg-orange-600 transition"
+        >
+          Explore Rooms <ArrowRight size={20} />
+        </Link>
+      </motion.div>
+
+      {/* Feature Grid Section */}
+      <section className="mt-28 grid grid-cols-1 sm:grid-cols-2 gap-8 max-w-5xl w-full">
+        {/* Box 1 */}
+        <div className="rounded-3xl bg-[#FFF2E8] p-8 shadow-sm border border-orange-100">
+          <p className="text-sm font-semibold text-orange-500 mb-2">Anon handles</p>
+          <h3 className="text-xl font-bold mb-2 text-gray-900">
+            Be heard without being seen
+          </h3>
+          <p className="text-gray-600">
+            Pick a handle. Share openly. Your legal name is never shown.
+          </p>
         </div>
 
-        <div
-          className="pointer-events-none mx-auto mt-12 h-1 w-40 rounded-full"
-          style={{ background: "linear-gradient(90deg, var(--color-brand), var(--color-accent))" }}
-        />
-      </section>
+        {/* Box 2 */}
+        <div className="rounded-3xl bg-[#F6FFF3] p-8 shadow-sm border border-green-100">
+          <p className="text-sm font-semibold text-green-500 mb-2">Realtime</p>
+          <h3 className="text-xl font-bold mb-2 text-gray-900">
+            Fast, live threads
+          </h3>
+          <p className="text-gray-600">
+            Post a question, get replies instantly with Supabase Realtime.
+          </p>
+        </div>
 
-      {/* FEATURES */}
-      <section className="mx-auto grid max-w-5xl grid-cols-1 gap-4 pb-20 sm:grid-cols-2">
-        <Feature badge="Anon handles" title="Be heard without being seen"
-                 text="Pick a handle. Share openly. Your legal name is never shown." />
-        <Feature badge="Realtime" tone="green" title="Fast, live threads"
-                 text="Post a question, get replies instantly with Supabase Realtime." />
-        <Feature badge="Safety-first" title="Clear guardrails"
-                 text="Community rules & moderation tools keep rooms supportive." />
-        <Feature badge="For teams" tone="green" title="Room topics for every sport"
-                 text="Training, injuries, performance, and more." />
-      </section>
+        {/* Box 3 */}
+        <div className="rounded-3xl bg-[#FFF2E8] p-8 shadow-sm border border-orange-100">
+          <p className="text-sm font-semibold text-orange-500 mb-2">Safety-first</p>
+          <h3 className="text-xl font-bold mb-2 text-gray-900">
+            Clear guardrails
+          </h3>
+          <p className="text-gray-600">
+            Community rules & moderation tools keep rooms supportive.
+          </p>
+        </div>
 
-      {/* CTA */}
-      <section
-        className="mx-auto mb-24 max-w-4xl rounded-2xl border p-6 text-center"
-        style={{ background: "color-mix(in oklab, var(--color-accent), white 92%)" }}
-      >
-        <h3 className="text-xl font-semibold">Coaches & orgs</h3>
-        <p className="mt-1 text-slate-700">Pilot Silo with your athletes. We’ll handle setup and safety.</p>
-        <div className="mt-4">
-          <Link href="/contact" className="btn btn-primary">Get in touch</Link>
+        {/* Box 4 */}
+        <div className="rounded-3xl bg-[#F6FFF3] p-8 shadow-sm border border-green-100">
+          <p className="text-sm font-semibold text-green-500 mb-2">For teams</p>
+          <h3 className="text-xl font-bold mb-2 text-gray-900">
+            Room topics for every sport
+          </h3>
+          <p className="text-gray-600">
+            Training, injuries, performance, and more.
+          </p>
         </div>
       </section>
     </main>
-  );
-}
-
-function Feature({
-  badge, title, text, tone = "orange",
-}: { badge: string; title: string; text: string; tone?: "orange" | "green" }) {
-  const bg = tone === "green"
-    ? "color-mix(in oklab, var(--color-accent), white 88%)"
-    : "color-mix(in oklab, var(--color-brand), white 88%)";
-  const fg = tone === "green" ? "var(--color-accent)" : "var(--color-brand)";
-  return (
-    <div className="card p-5">
-      <span className="inline-block rounded-xl px-2 py-1 text-[11px] font-medium" style={{ background: bg, color: fg }}>
-        {badge}
-      </span>
-      <h3 className="mt-2 text-lg font-semibold">{title}</h3>
-      <p className="mt-1 text-slate-600">{text}</p>
-    </div>
   );
 }

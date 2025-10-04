@@ -2,6 +2,13 @@ import "./globals.css";
 import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { Fredoka } from "next/font/google";
+
+const fredoka = Fredoka({
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
+});
 
 export const metadata: Metadata = {
   title: "Athlete Chat",
@@ -11,7 +18,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-white text-gray-900 antialiased">
+      {/* Apply the font class here */}
+      <body className={`${fredoka.className} bg-white text-gray-900 antialiased`}>
         <Navbar />
         <main className="min-h-[calc(100vh-200px)]">{children}</main>
         <Footer />
