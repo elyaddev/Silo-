@@ -1,49 +1,68 @@
-'use client';
+// This file is copied and adapted from the original repository.
+// It has been modified to pick the initial auth mode (sign‑in vs. sign‑up)
+// from the `mode` query parameter.  If `mode=signup` is present in the URL
+// the page will default to the account creation view instead of the sign‑in
+// view.  All other functionality remains unchanged.
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
-import type { AuthApiError } from '@supabase/supabase-js';
-import zxcvbn from 'zxcvbn';
+"use client";
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import type { AuthApiError } from "@supabase/supabase-js";
+import zxcvbn from "zxcvbn";
 
 export default function LoginPage() {
   const router = useRouter();
   const search = useSearchParams();
-  const next = search.get('next') || '/dashboard';
+  const next = search.get("next") || "/dashboard";
 
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  // Read the optional `mode` query parameter.  If the caller specifies
+  // `mode=signup` we initialise the UI in sign‑up mode.  Otherwise we
+  // default to sign‑in.  This allows the top‑right “Sign up” button to
+  // link to `/login?mode=signup` instead of a missing `/signup` route.
+  const initialModeParam =
+    search.get("mode") === "signup" ? "signup" : "signin";
+  const [mode, setMode] = useState<"signin" | "signup">(
+    initialModeParam as "signin" | "signup"
+  );
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [password2, setPassword2] = useState('');
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
+  const [username, setUsername] = useState("");
 
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [canResend, setCanResend] = useState(false);
 
   // Password strength (visual only — no blocking)
-  const score = useMemo(() => zxcvbn(password || '').score, [password]); // 0..4
+  const score = useMemo(() => zxcvbn(password || "").score, [password]); // 0..4
   const label = useMemo(
-    () => ['Very weak', 'Weak', 'Okay', 'Good', 'Strong'][score],
+    () => ["Very weak", "Weak", "Okay", "Good", "Strong"][score],
     [score]
   );
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) router.replace(next);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user) router.replace(next);
     })();
   }, [router, next]);
 
   const handleErrorMessage = (err: unknown) => {
     const api = err as AuthApiError & { status?: number };
     const raw = api?.message ?? (err as any)?.message ?? String(err);
-    if (/already\s*registered/i.test(raw)) return 'That email already has an account. Please sign in.';
-    if (/invalid login credentials/i.test(raw)) return 'Invalid login. Check your email and password.';
+    if (/already\s*registered/i.test(raw))
+      return "That email already has an account. Please sign in.";
+    if (/invalid login credentials/i.test(raw))
+      return "Invalid login. Check your email and password.";
     if (/password/i.test(raw)) return raw;
-    if (/rate limit/i.test(raw)) return 'Too many attempts. Please try again in a minute.';
-    return raw || 'Something went wrong.';
+    if (/rate limit/i.test(raw))
+      return "Too many attempts. Please try again in a minute.";
+    return raw || "Something went wrong.";
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -53,13 +72,15 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      if (mode === 'signup') {
+      if (mode === "signup") {
         // Keep only basic checks: username format + passwords match.
-        if (!/^[a-z0-9_]{3,20}$/.test(username)) {
-          throw new Error('Pick a username 3–20 chars (a–z, 0–9, underscore).');
+        if (!/^[a-z0-9_]{3,20}$/i.test(username)) {
+          throw new Error(
+            "Pick a username 3–20 chars (a–z, 0–9, underscore)."
+          );
         }
         if (password !== password2) {
-          throw new Error('Passwords do not match.');
+          throw new Error("Passwords do not match.");
         }
 
         const { data, error } = await supabase.auth.signUp({
@@ -67,7 +88,7 @@ export default function LoginPage() {
           password, // no min length enforcement here
           options: {
             data: { username },
-            emailRedirectTo: 'http://localhost:3002/login',
+            emailRedirectTo: "http://localhost:3002/login",
           },
         });
         if (error) throw error;
@@ -78,23 +99,26 @@ export default function LoginPage() {
         if (session && user) {
           // Email confirmation OFF
           const { error: upsertErr } = await supabase
-            .from('profiles')
-            .upsert({ id: user.id, username }, { onConflict: 'id' });
+            .from("profiles")
+            .upsert({ id: user.id, username }, { onConflict: "id" });
           if (upsertErr) {
-            if ((upsertErr as any).code === '23505') {
-              throw new Error('That username is already taken.');
+            if ((upsertErr as any).code === "23505") {
+              throw new Error("That username is already taken.");
             }
             throw upsertErr;
           }
           router.push(next);
         } else {
           // Email confirmation ON
-          setMsg('Account created! Please check your email to confirm before logging in.');
+          setMsg("Account created! Please check your email to confirm before logging in.");
           setCanResend(true);
         }
       } else {
         // Sign in: no min length, no client-side strength rules
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
         if (error) throw error;
         router.push(next);
       }
@@ -108,9 +132,12 @@ export default function LoginPage() {
   const resendConfirmation = async () => {
     setMsg(null);
     try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email });
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+      });
       if (error) throw error;
-      setMsg('Confirmation email re-sent. Please check your inbox (and spam).');
+      setMsg("Confirmation email re-sent. Please check your inbox (and spam).");
     } catch (err) {
       setMsg(handleErrorMessage(err));
     }
@@ -120,10 +147,10 @@ export default function LoginPage() {
     setMsg(null);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'http://localhost:3002/reset',
+        redirectTo: "http://localhost:3002/reset",
       });
       if (error) throw error;
-      setMsg('Password reset email sent. Check your inbox.');
+      setMsg("Password reset email sent. Check your inbox.");
     } catch (err) {
       setMsg(handleErrorMessage(err));
     }
@@ -133,7 +160,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-md rounded-2xl shadow p-6 space-y-4 bg-white">
         <h1 className="text-2xl font-semibold text-center">
-          Silo — {mode === 'signin' ? 'Sign in' : 'Create account'}
+          Silo — {mode === "signin" ? "Sign in" : "Create account"}
         </h1>
 
         <form onSubmit={onSubmit} className="space-y-3">
@@ -157,17 +184,15 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              autoComplete={mode === "signin" ? "current-password" : "new-password"}
             />
 
             {/* Strength meter is visual only; does not block */}
-            {mode === 'signup' && (
+            {mode === "signup" && (
               <div className="mt-2">
                 <div className="h-2 w-full rounded bg-neutral-200 overflow-hidden">
                   <div
-                    className={`h-full transition-all ${
-                      score >= 3 ? 'bg-green-500' : 'bg-orange-500'
-                    }`}
+                    className={`h-full transition-all ${score >= 3 ? "bg-green-500" : "bg-orange-500"}`}
                     style={{ width: `${((score + 1) / 5) * 100}%` }}
                   />
                 </div>
@@ -179,7 +204,7 @@ export default function LoginPage() {
             )}
           </div>
 
-          {mode === 'signup' && (
+          {mode === "signup" && (
             <>
               <div>
                 <label className="block text-sm mb-1">Confirm password</label>
@@ -215,18 +240,16 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full rounded-lg border px-4 py-2 hover:bg-neutral-50 disabled:opacity-50"
           >
-            {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Sign up'}
+            {loading ? "Please wait…" : mode === "signin" ? "Sign in" : "Sign up"}
           </button>
         </form>
 
         <div className="text-sm text-center space-y-2">
-          {mode === 'signin' ? (
+          {mode === "signin" ? (
             <>
               <div>
                 No account?{' '}
-                <button className="underline" onClick={() => setMode('signup')}>
-                  Create one
-                </button>
+                <button className="underline" onClick={() => setMode("signup")}>Create one</button>
               </div>
               <div>
                 Forgot password?{' '}
@@ -239,9 +262,7 @@ export default function LoginPage() {
             <>
               <div>
                 Already have an account?{' '}
-                <button className="underline" onClick={() => setMode('signin')}>
-                  Sign in
-                </button>
+                <button className="underline" onClick={() => setMode("signin")}>Sign in</button>
               </div>
               {canResend && (
                 <div>

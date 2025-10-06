@@ -1,8 +1,16 @@
-// components/Navbar.tsx
+// This file is copied and adapted from the original repository.
+// Changes include:
+//  * Sign‑up links now point to `/login?mode=signup` instead of `/signup` so
+//    pressing “Sign up” shows the account creation form instead of a 404.
+//  * When a user is signed in the “Account” link has been replaced with a
+//    dropdown menu.  Clicking your username toggles a menu containing your
+//    username and a link to your activity page.  This prepares the UI for
+//    additional menu items in the future.
+
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import SearchBar from "@/components/SearchBar";
@@ -15,6 +23,21 @@ export default function Navbar() {
   const [openMobile, setOpenMobile] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
+  // Track whether the user menu is open and a ref to close it on outside click.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Close the dropdown menu when clicking outside of it
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (!menuRef.current) return;
+      if (!menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -33,6 +56,7 @@ export default function Navbar() {
         setUsername(null);
       }
     })();
+    // Refresh when the pathname changes (e.g. after login/logout)
   }, [pathname]);
 
   async function signOut() {
@@ -78,17 +102,32 @@ export default function Navbar() {
           <SearchBar />
           {signedIn ? (
             <div className="flex items-center gap-2">
-              {username ? (
-                <span className="rounded-full border px-2 py-1 text-xs text-slate-600">
-                  @{username}
-                </span>
-              ) : null}
-              <Link
-                href="/account"
-                className="rounded-lg border px-3 py-1.5 text-sm text-slate-700 hover:bg-neutral-50"
-              >
-                Account
-              </Link>
+              {/* Dropdown for user menu */}
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => setMenuOpen((o) => !o)}
+                  className="rounded-lg border px-3 py-1.5 text-sm text-slate-700 hover:bg-neutral-50"
+                >
+                  {username ? `@${username}` : "Account"}
+                </button>
+                {menuOpen && (
+                  <div className="absolute right-0 mt-2 w-40 rounded-lg border bg-white shadow-lg py-1 z-50">
+                    {username && (
+                      <div className="px-4 py-2 text-sm font-medium text-neutral-700">
+                        @{username}
+                      </div>
+                    )}
+                    <Link
+                      href="/account/activity"
+                      className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      My Activity
+                    </Link>
+                  </div>
+                )}
+              </div>
+              {/* Keep Sign out as a separate button next to the menu */}
               <button
                 onClick={signOut}
                 className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600"
@@ -104,8 +143,9 @@ export default function Navbar() {
               >
                 Log in
               </Link>
+              {/* Update sign up link to point to login page with signup mode */}
               <Link
-                href="/signup"
+                href="/login?mode=signup"
                 className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600"
               >
                 Sign up
@@ -154,27 +194,27 @@ export default function Navbar() {
             <div className="pt-2">
               {signedIn ? (
                 <div className="flex items-center gap-2">
-                  {username ? (
-                    <span className="rounded-full border px-2 py-1 text-xs text-slate-600">
-                      @{username}
-                    </span>
-                  ) : null}
-                  <Link
-                    href="/account"
-                    onClick={() => setOpenMobile(false)}
-                    className="rounded-lg border px-3 py-1.5 text-sm text-slate-700 hover:bg-neutral-50"
-                  >
-                    Account
-                  </Link>
-                  <button
-                    onClick={() => {
-                      setOpenMobile(false);
-                      void signOut();
-                    }}
-                    className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600"
-                  >
-                    Sign out
-                  </button>
+                  {/* Mobile user menu: reuse the same dropdown; for simplicity show as inline list */}
+                  <div className="flex flex-col w-full border rounded-lg overflow-hidden">
+                    <button
+                      className="px-3 py-2 text-left text-sm text-slate-700 border-b hover:bg-neutral-50"
+                      onClick={() => {
+                        setOpenMobile(false);
+                        router.push('/account/activity');
+                      }}
+                    >
+                      My Activity
+                    </button>
+                    <button
+                      className="px-3 py-2 text-left text-sm text-slate-700 hover:bg-neutral-50"
+                      onClick={async () => {
+                        setOpenMobile(false);
+                        await signOut();
+                      }}
+                    >
+                      Sign out
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
@@ -186,7 +226,7 @@ export default function Navbar() {
                     Log in
                   </Link>
                   <Link
-                    href="/signup"
+                    href="/login?mode=signup"
                     onClick={() => setOpenMobile(false)}
                     className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600"
                   >

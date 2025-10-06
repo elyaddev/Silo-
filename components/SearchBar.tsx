@@ -1,3 +1,10 @@
+// Adapted search bar from the original repository.
+// Changes:
+//  * Highlighting now matches whole words only instead of arbitrary
+//    substrings.  This complements the server‑side search changes and
+//    prevents partial matches such as “hindrance” being highlighted when
+//    searching for “hi”.
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -120,7 +127,7 @@ export default function SearchBar() {
     if (!open) setOpen(true);
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setHighlight((h) => Math.min((items.length ? items.length - 1 : 0), h + 1));
+      setHighlight((h) => Math.min(items.length ? items.length - 1 : 0, h + 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlight((h) => Math.max(0, h - 1));
@@ -201,15 +208,19 @@ function useDebounce<T>(value: T, ms = 250): T {
 
 function highlightMatch(text: string, q: string) {
   if (!q) return text;
-  const idx = text.toLowerCase().indexOf(q.toLowerCase());
-  if (idx === -1) return text;
+  // Escape special regex characters in q
+  const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`\\b${escapeRegExp(q)}\\b`, "i");
+  const match = text.match(re);
+  if (!match || match.index === undefined) return text;
+  const idx = match.index;
   const before = text.slice(0, idx);
-  const match = text.slice(idx, idx + q.length);
-  const after = text.slice(idx + q.length);
+  const matchStr = match[0];
+  const after = text.slice(idx + matchStr.length);
   return (
     <>
       {before}
-      <mark className="bg-yellow-200">{match}</mark>
+      <mark className="bg-yellow-200">{matchStr}</mark>
       {after}
     </>
   );
