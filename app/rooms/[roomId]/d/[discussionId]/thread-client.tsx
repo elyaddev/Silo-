@@ -19,7 +19,7 @@ type Reply = {
   profile_id: string | null;
   username?: string | null;
   is_deleted: boolean;
-  parent_id: number | null; // <-- BIGINT now
+  parent_id: number | null; // BIGINT
 };
 
 type ReplyTarget = { id: string; excerpt?: string };
@@ -38,7 +38,10 @@ export default function ThreadClient({
   const [posting, setPosting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
+
   const bottomRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Cache for usernames
   const usernameCache = useRef<Map<string, string>>(new Map());
@@ -151,6 +154,20 @@ export default function ThreadClient({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [replies.length]);
 
+  // Helper: scroll to composer and focus
+  function goToComposer() {
+    composerRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    // focus slightly after scroll starts
+    setTimeout(() => inputRef.current?.focus(), 150);
+  }
+
+  // Helper: scroll back to a message card by id
+  function scrollToMessageId(id: number | null) {
+    if (id === null || id === undefined) return;
+    const el = document.getElementById(`msg-${id}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   // Send a new reply (with optional parent)
   async function send() {
     const text = content.trim();
@@ -166,7 +183,6 @@ export default function ThreadClient({
 
     setPosting(true);
 
-    // parent_id must be numeric now
     const parentNumeric = replyTarget ? Number(replyTarget.id) : null;
 
     const { data, error } = await supabase
@@ -175,7 +191,7 @@ export default function ThreadClient({
         room_id: roomId,
         discussion_id: discussion.id,
         content: text,
-        parent_id: parentNumeric, // <-- numeric insert
+        parent_id: parentNumeric,
       })
       .select("id, content, created_at, profile_id, is_deleted, parent_id")
       .single();
@@ -188,6 +204,11 @@ export default function ThreadClient({
 
     setContent("");
     setReplyTarget(null);
+
+    // After replying, scroll back to the parent message (where the reply will appear)
+    setTimeout(() => {
+      scrollToMessageId(parentNumeric);
+    }, 50);
 
     try {
       await logActivity("reply_created", {
@@ -210,7 +231,7 @@ export default function ThreadClient({
     }
   }
 
-  // Group replies into root-level and children
+  // Group into root-level and child replies
   const { rootReplies, childrenMap } = useMemo(() => {
     const map = new Map<number | string, Reply[]>();
     const roots: Reply[] = [];
@@ -227,21 +248,68 @@ export default function ThreadClient({
     return { rootReplies: roots, childrenMap: map };
   }, [replies]);
 
+  function MessageCard({ msg }: { msg: Reply }) {
+    const mine = !!currentUserId && msg.profile_id === currentUserId;
+
+    if (msg.is_deleted) {
+      return (
+        <div className="rounded-2xl border border-dashed bg-neutral-50 px-4 py-3 italic text-neutral-500 text-sm">
+          This reply was deleted.
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-2xl border bg-white px-5 py-4 shadow-sm">
+        <div className="text-[13px] md:text-sm font-semibold text-slate-800 flex items-center gap-2">
+          <span>{msg.username ? `@${msg.username}` : "anonymous"}</span>
+          {mine && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
+              you
+            </span>
+          )}
+        </div>
+        <p className="mt-1 whitespace-pre-wrap text-[15px] md:text-[16px] leading-relaxed text-slate-800">
+          {msg.content}
+        </p>
+        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+          <ClientTime iso={msg.created_at} />
+          <div className="flex gap-2">
+            {/* Only allow replying to ROOT messages (parent_id === null) */}
+            {msg.parent_id === null && (
+              <button
+                className="underline hover:no-underline"
+                onClick={() => {
+                  setReplyTarget({
+                    id: String(msg.id),
+                    excerpt: msg.content.slice(0, 80),
+                  });
+                  goToComposer(); // scroll & focus
+                }}
+              >
+                Reply
+              </button>
+            )}
+            {mine && (
+              <button
+                className="underline hover:no-underline text-red-500"
+                onClick={() => handleDelete(msg.id)}
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-4xl px-6 py-8 space-y-8">
       {/* Question card */}
-      <div
-        className="rounded-3xl border bg-white p-6 shadow-sm"
-        style={{ borderColor: "color-mix(in oklab, var(--color-brand), white 60%)" }}
-      >
+      <div className="rounded-3xl border bg-white p-6 shadow-sm">
         <div className="mb-2">
-          <span
-            className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-            style={{
-              background: "color-mix(in oklab, var(--color-brand), white 90%)",
-              color: "var(--color-brand)",
-            }}
-          >
+          <span className="rounded-full px-2 py-0.5 text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
             Question
           </span>
         </div>
@@ -253,89 +321,33 @@ export default function ThreadClient({
         ) : null}
       </div>
 
-      {/* Replies (root messages + nested children) */}
+      {/* Replies (roots + 1-level children) */}
       <div className="space-y-3">
-        {rootReplies.map((m) => {
-          const isMine = !!currentUserId && m.profile_id === currentUserId;
-
-          function MessageCard({ msg }: { msg: Reply }) {
-            const mine = !!currentUserId && msg.profile_id === currentUserId;
-
-            if (msg.is_deleted) {
-              return (
-                <div className="rounded-2xl border border-dashed bg-neutral-50 px-4 py-3 italic text-neutral-500 text-sm">
-                  This reply was deleted.
-                </div>
-              );
-            }
-
-            return (
-              <div className="rounded-2xl border bg-white px-5 py-4 shadow-sm">
-                <div className="text-[13px] md:text-sm font-semibold text-slate-800 flex items-center gap-2">
-                  <span>{msg.username ? `@${msg.username}` : "anonymous"}</span>
-                  {mine && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
-                      you
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 whitespace-pre-wrap text-[15px] md:text-[16px] leading-relaxed text-slate-800">
-                  {msg.content}
-                </p>
-                <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
-                  <ClientTime iso={msg.created_at} />
-                  <div className="flex gap-2">
-                    <button
-                      className="underline hover:no-underline"
-                      onClick={() =>
-                        setReplyTarget({
-                          id: String(msg.id), // UI state can stay string
-                          excerpt: msg.content.slice(0, 80),
-                        })
-                      }
-                    >
-                      Reply
-                    </button>
-                    {mine && (
-                      <button
-                        className="underline hover:no-underline text-red-500"
-                        onClick={() => handleDelete(msg.id)}
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                </div>
+        {rootReplies.map((m) => (
+          <div key={m.id} id={`msg-${m.id}`}>
+            <MessageCard msg={m} />
+            {!!childrenMap.get(m.id)?.length && (
+              <div className="mt-3 space-y-3">
+                {childrenMap
+                  .get(m.id)!
+                  .sort(
+                    (a, b) =>
+                      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                  )
+                  .map((c) => (
+                    <div key={c.id} id={`msg-${c.id}`} className="ml-3 border-l-2 border-gray-200 pl-4">
+                      <MessageCard msg={c} />
+                    </div>
+                  ))}
               </div>
-            );
-          }
-
-          return (
-            <div key={m.id}>
-              <MessageCard msg={m} />
-              {!!childrenMap.get(m.id)?.length && (
-                <div className="mt-3 space-y-3">
-                  {childrenMap
-                    .get(m.id)!
-                    .sort((a, b) =>
-                      new Date(a.created_at).getTime() -
-                      new Date(b.created_at).getTime()
-                    )
-                    .map((c) => (
-                      <div key={c.id} className="ml-3 border-l-2 border-gray-200 pl-4">
-                        <MessageCard msg={c} />
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
+            )}
+          </div>
+        ))}
         <div ref={bottomRef} />
       </div>
 
       {/* Composer with reply-to pill */}
-      <div className="rounded-2xl border bg-white p-4">
+      <div ref={composerRef} className="rounded-2xl border bg-white p-4">
         {replyTarget && (
           <div className="mb-2 flex items-center gap-2 text-sm rounded-2xl border px-3 py-2 bg-orange-50">
             <span className="text-orange-600">Replying to:</span>
@@ -351,6 +363,7 @@ export default function ThreadClient({
         )}
         <div className="flex gap-2">
           <input
+            ref={inputRef}
             type="text"
             placeholder={
               replyTarget ? "Write a reply to this message…" : "Write a reply…"
