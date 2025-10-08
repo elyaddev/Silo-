@@ -1,3 +1,4 @@
+// app/rooms/[roomId]/page.tsx
 import DiscussionList from "@/components/DiscussionList";
 import DiscussionComposer from "@/components/DiscussionComposer";
 import BackBar from "@/components/BackBar";
@@ -16,7 +17,7 @@ export default async function RoomPage({
 }: {
   params: Promise<{ roomId: string }>;
 }) {
-  const { roomId } = await params;              // ✅ await the promise
+  const { roomId } = await params;
   const supabase = createServerComponentClient({ cookies });
 
   const { data: room, error: roomError } = await supabase
@@ -34,31 +35,40 @@ export default async function RoomPage({
   const roomLabel = (room as any)?.name ?? (room as any)?.title ?? "(Room)";
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6 space-y-6">
+    <div className="mx-auto max-w-3xl px-6 py-10 space-y-10">
       <BackBar backHref="/rooms" backLabel="All Rooms" />
-      <h1 className="text-2xl font-semibold">{roomLabel}</h1>
 
-      {(roomError || !room) && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-700">
-          {roomError
-            ? `Could not load room: ${roomError.message}`
-            : "Room not found (or you don't have permission)."}
-        </div>
-      )}
+      <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">
+        {roomLabel}
+      </h1>
 
-      <div id="compose">
+      {/* Composer */}
+      <section aria-labelledby="start-discussion" className="w-full">
+        <h2 id="start-discussion" className="sr-only">
+          Start a new discussion
+        </h2>
+
+        {/* composer is a client component */}
         <DiscussionComposer roomId={roomId} />
-      </div>
+      </section>
 
-      <h2 className="text-lg font-semibold">Discussions</h2>
+      {/* Discussions */}
+      <section aria-labelledby="discussions" className="mt-6">
+        <h2 id="discussions" className="text-2xl font-semibold text-slate-900 mb-4">
+          Discussions
+        </h2>
 
-      {discError ? (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          Failed to load discussions: {discError.message}
-        </div>
-      ) : (
-        <DiscussionList roomId={roomId} items={(discussions ?? []) as DiscussionRow[]} />
-      )}
+        {discError ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            Failed to load discussions: {discError.message}
+          </div>
+        ) : (
+          <DiscussionList
+            roomId={roomId}
+            items={(discussions ?? []) as DiscussionRow[]}
+          />
+        )}
+      </section>
     </div>
   );
 }

@@ -1,158 +1,209 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import ClientTime from "@/components/ClientTime";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useEffect, useRef, useState } from "react";
+import supabase from "@/lib/supabaseClient";
 
-type Msg = {
+/**
+ * ChatMessages displays a scrollable list of messages for a given
+ * discussion. It loads an initial batch of the newest messages, then
+ * paginates older messages when the user scrolls up, and subscribes
+ * to realtime inserts for new messages. The styling follows the
+ * updated Silo design: neutral surfaces, warm accents and soft
+ * separators. Bubbles are rendered as lightly bordered blocks with
+ * rounded corners to keep the conversation gentle and inviting.
+ */
+type Message = {
   id: string;
   content: string;
-  profile_id: string | null;
   created_at: string;
-  is_deleted: boolean;
-  parent_id: string | null;
+  profile_id: string | null;
+  room_id: string;
+  discussion_id: string | null;
 };
 
+const PAGE_SIZE = 50;
+
 export default function ChatMessages({
-  messages,
-  onChooseReplyTarget, // (msgId: string, excerpt?: string) => void
+  roomId,
+  discussionId,
 }: {
-  messages: Msg[];
-  onChooseReplyTarget: (msgId: string, excerpt?: string) => void;
+  roomId: string;
+  discussionId: string;
 }) {
-  const supabase = createClientComponentClient();
-  const endRef = useRef<HTMLDivElement | null>(null);
-  const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [reachedStart, setReachedStart] = useState(false);
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length]);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const atBottomRef = useRef(true);
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setMyUserId(data.user?.id ?? null);
-    });
-  }, [supabase]);
+  // Maintain the scroll position when new older messages are prepended
+  function preserveScrollPosition(prevHeight: number) {
+    const el = viewportRef.current;
+    if (!el) return;
+    const newHeight = el.scrollHeight;
+    el.scrollTop = newHeight - prevHeight;
+  }
 
-  // Build parent -> children map for 1-level threading
-  const { roots, childrenMap } = useMemo(() => {
-    const map = new Map<string, Msg[]>();
-    const roots: Msg[] = [];
-    for (const m of messages) {
-      if (m.parent_id) {
-        const arr = map.get(m.parent_id) ?? [];
-        arr.push(m);
-        map.set(m.parent_id, arr);
-      } else {
-        roots.push(m);
-      }
+  // Scroll to the bottom if the user is near the bottom or when forced
+  function scrollToBottom(force = false) {
+    const el = viewportRef.current;
+    if (!el) return;
+    if (force || atBottomRef.current) el.scrollTop = el.scrollHeight;
+  }
+
+  // Handle scrolling to determine when to load older messages or when to
+  // keep the view pinned to the bottom for new inserts
+  function onScroll() {
+    const el = viewportRef.current;
+    if (!el) return;
+    const thresholdBottom = 80;
+    atBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < thresholdBottom;
+    if (!loadingOlder && !reachedStart && el.scrollTop < 80) {
+      void loadOlder();
     }
-    return { roots, childrenMap: map };
-  }, [messages]);
-
-  async function deleteMessage(id: string) {
-    // Soft delete: mark is_deleted = true (owner or moderator)
-    await supabase.from("messages").update({ is_deleted: true }).eq("id", id);
-    // Realtime UPDATE handler in useRealtimeReplies will update UI
   }
 
-  function Tombstone() {
-    return (
-      <div className="rounded-2xl border border-dashed bg-neutral-50 text-neutral-500 text-sm px-4 py-3 italic">
-        This reply was deleted.
-      </div>
-    );
+  // Initial fetch of the most recent messages
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("messages")
+        .select(
+          "id, content, created_at, profile_id, room_id, discussion_id"
+        )
+        .eq("room_id", roomId)
+        .eq("discussion_id", discussionId)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
+      if (cancelled) return;
+      if (error) {
+        console.error(error.message);
+        setMessages([]);
+      } else {
+        const ordered = (data ?? []).slice().reverse() as Message[];
+        setMessages(ordered);
+      }
+      setLoading(false);
+      setTimeout(() => scrollToBottom(true), 0);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId, discussionId]);
+
+  // Realtime subscription to new inserts
+  useEffect(() => {
+    const channel = supabase
+      .channel(`messages-disc-${discussionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `discussion_id=eq.${discussionId}`,
+        },
+        (payload) => {
+          setMessages((prev) => [...prev, payload.new as Message]);
+          if (atBottomRef.current) {
+            setTimeout(() => scrollToBottom(), 0);
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [discussionId]);
+
+  // Load an older page of messages when the user scrolls near the top
+  async function loadOlder() {
+    if (loadingOlder || reachedStart || messages.length === 0) return;
+    setLoadingOlder(true);
+    const first = messages[0];
+    const prevHeight = viewportRef.current?.scrollHeight ?? 0;
+    const { data, error } = await supabase
+      .from("messages")
+      .select(
+        "id, content, created_at, profile_id, room_id, discussion_id"
+      )
+      .eq("room_id", roomId)
+      .eq("discussion_id", discussionId)
+      .lt("created_at", first.created_at)
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
+    if (error) {
+      console.error(error.message);
+      setLoadingOlder(false);
+      return;
+    }
+    const older = (data ?? []).slice().reverse() as Message[];
+    if (older.length === 0) {
+      setReachedStart(true);
+      setLoadingOlder(false);
+      return;
+    }
+    setMessages((prev) => [...older, ...prev]);
+    setLoadingOlder(false);
+    setTimeout(() => preserveScrollPosition(prevHeight), 0);
   }
 
-  function MessageCard({ m }: { m: Msg }) {
-    const canDelete = myUserId && m.profile_id === myUserId;
-
-    return (
-      <div className="rounded-2xl border border-gray-300 bg-white px-5 py-4 shadow-sm">
-        {m.is_deleted ? (
-          <Tombstone />
+  return (
+    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div
+        ref={viewportRef}
+        onScroll={onScroll}
+        className="max-h-[60vh] overflow-y-auto px-4 py-4 space-y-4 scroll-smooth"
+      >
+        {loading ? (
+          <div className="py-8 text-center text-[var(--color-muted)]">
+            Loading messages…
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="py-8 text-center text-[var(--color-muted)]">
+            No messages yet. Start the conversation below.
+          </div>
         ) : (
           <>
-            <p className="whitespace-pre-wrap text-[15px] text-gray-800 leading-relaxed">
-              {m.content}
-            </p>
-            <div className="mt-2 flex items-center gap-3 text-[11px] text-gray-500">
-              <ClientTime iso={m.created_at} />
-              <button
-                className="underline hover:no-underline"
-                onClick={() => onChooseReplyTarget(m.id, m.content.slice(0, 80))}
-              >
-                Reply
-              </button>
-              {canDelete && (
-                <button
-                  className="underline hover:no-underline text-red-500"
-                  onClick={() => deleteMessage(m.id)}
-                >
-                  Delete
-                </button>
-              )}
-            </div>
+            {loadingOlder && (
+              <div className="text-center text-xs text-[var(--color-muted)] py-1">
+                Loading older…
+              </div>
+            )}
+            {messages.map((m) => (
+              <div key={m.id} className="group">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-baseline gap-2">
+                    {/* The handle is not yet available; replace 'anon' with the user's handle once profiles are joined. */}
+                    <span className="text-sm font-medium text-[var(--color-text)]">
+                      @anon
+                    </span>
+                    <time className="text-xs text-[var(--color-muted)]">
+                      {new Date(m.created_at).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </time>
+                  </div>
+                </div>
+                <div className="mt-1 rounded-2xl px-3 py-2 bg-[var(--color-background)] border border-[var(--color-border)] text-[var(--color-text)] whitespace-pre-wrap">
+                  {m.content}
+                </div>
+              </div>
+            ))}
+            {!reachedStart && !loadingOlder && (
+              <div className="text-center text-xs text-[var(--color-muted)] pb-1">
+                Scroll up to load older
+              </div>
+            )}
           </>
         )}
       </div>
-    );
-  }
-
-  if (!messages.length) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-gray-500">
-        No messages yet — start the conversation!
-      </div>
-    );
-  }
-
-  const [first, ...rest] = roots; // first message = question
-
-  return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
-      {/* First message as the question */}
-      {first && (
-        <article className="rounded-2xl border border-gray-300 bg-white px-5 py-4 shadow-sm">
-          <h2 className="text-lg sm:text-xl font-semibold tracking-tight mb-2">
-            {first.is_deleted ? "This question was deleted." : first.content}
-          </h2>
-          <div className="text-xs text-gray-400">
-            <ClientTime iso={first.created_at} />
-          </div>
-          {/* children of the first message */}
-          {!!childrenMap.get(first.id)?.length && (
-            <div className="mt-4 space-y-3">
-              {childrenMap.get(first.id)!.map((c) => (
-                <div key={c.id} className="ml-3 border-l-2 border-gray-200 pl-4">
-                  <MessageCard m={c} />
-                </div>
-              ))}
-            </div>
-          )}
-        </article>
-      )}
-
-      {/* The rest of root messages (top-level answers) */}
-      <div className="space-y-4">
-        {rest.map((m) => (
-          <div key={m.id}>
-            <MessageCard m={m} />
-            {/* 1-level nested replies */}
-            {!!childrenMap.get(m.id)?.length && (
-              <div className="mt-3 space-y-3">
-                {childrenMap.get(m.id)!.map((c) => (
-                  <div key={c.id} className="ml-3 border-l-2 border-gray-200 pl-4">
-                    <MessageCard m={c} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div ref={endRef} />
     </div>
   );
 }

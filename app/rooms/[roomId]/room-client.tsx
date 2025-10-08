@@ -1,38 +1,20 @@
 "use client";
 
-import ChatMessages from "@/components/ChatMessages";
-import ChatInputQA from "@/components/ChatInputQA";
-import { useRealtimeMessages } from "@/lib/useRealtimeMessages";
-
-type Message = {
-  id: string;
-  room_id: string;
-  profile_id: string | null;
-  content: string;
-  created_at: string;
+type Props = {
+  roomId: string;
+  // keep this here in case you were passing initial data down,
+  // but we don't need it for the room screen
+  initial?: unknown;
 };
 
-export default function ChatRoomClient({
-  roomId,
-  initial,
-}: {
-  roomId: string;
-  initial: Message[];
-}) {
-  const { messages, setMessages } = useRealtimeMessages(roomId, initial);
-
-  return (
-    <div className="flex h-[calc(100vh-120px)] flex-col bg-gray-50">
-      {/* Optional: room name header */}
-      {/* <header className="px-4 py-3 text-xl font-semibold">{roomName}</header> */}
-      <ChatMessages messages={messages} />
-      <ChatInputQA
-        roomId={roomId}
-        onOptimisticAdd={(m) => setMessages((prev) => [...prev, m])}
-        onConfirm={(tempId, real) =>
-          setMessages((prev) => prev.map((p) => (p.id === tempId ? real : p)))
-        }
-      />
-    </div>
-  );
+/**
+ * Room-level client wrapper.
+ * Keep this lean; thread-level chat (messages/replies) belongs on the discussion page,
+ * not the room page. This avoids passing the wrong props (e.g., discussionId).
+ */
+export default function ChatRoomClient(_props: Props) {
+  // Nothing special needed here right now; the server page renders
+  // DiscussionComposer and DiscussionList. If you later add client-only
+  // interactions for the room shell, wire them up here.
+  return null;
 }
