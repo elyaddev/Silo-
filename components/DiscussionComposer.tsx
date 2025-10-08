@@ -47,29 +47,76 @@ export default function DiscussionComposer({ roomId }: { roomId: string }) {
     }
   }
 
+  const disabled = loading || !title.trim();
+
   return (
-    <div className="card p-5 space-y-2">
-      <h2 className="text-lg font-semibold text-[var(--color-brand)]">
+    <div
+      className="
+        rounded-2xl border border-neutral-200 bg-white/80
+        shadow-sm backdrop-blur-sm
+        dark:bg-neutral-900/70 dark:border-neutral-800
+        p-5 space-y-3
+      "
+    >
+      <h2
+        className="
+          text-base sm:text-lg font-semibold
+          text-[color:var(--color-brand)]
+        "
+      >
         Start a new discussion
       </h2>
-      <input
-        className="rounded-xl border border-orange-200 px-4 py-2 w-full"
-        placeholder="What's on your mind?"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-      />
-      <textarea
-        className="rounded-xl border border-orange-200 px-4 py-2 w-full"
-        rows={4}
-        placeholder="Add some context (optional)"
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-      />
-      <div className="flex justify-end">
+
+      {/* Title */}
+      <div className="space-y-1.5">
+        <label htmlFor="dc-title" className="sr-only">Title</label>
+        <input
+          id="dc-title"
+          className="
+            w-full rounded-xl border bg-white/70
+            border-neutral-200 px-4 py-2.5
+            placeholder:text-neutral-400
+            focus:outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]/30 focus:border-[color:var(--color-brand)]
+            dark:bg-neutral-900/70 dark:border-neutral-800
+          "
+          placeholder="What's on your mind?"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      </div>
+
+      {/* Body */}
+      <div className="space-y-1.5">
+        <label htmlFor="dc-body" className="sr-only">Body</label>
+        <textarea
+          id="dc-body"
+          className="
+            w-full rounded-xl border bg-white/70
+            border-neutral-200 px-4 py-2.5
+            placeholder:text-neutral-400
+            focus:outline-none focus:ring-2 focus:ring-[color:var(--color-brand)]/30 focus:border-[color:var(--color-brand)]
+            dark:bg-neutral-900/70 dark:border-neutral-800
+          "
+          rows={4}
+          placeholder="Add some context (optional)"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+        />
+      </div>
+
+      {/* Action row */}
+      <div className="flex items-center justify-end pt-1">
         <button
-          disabled={loading || !title.trim()}
+          disabled={disabled}
           onClick={post}
-          className="btn-primary disabled:opacity-50"
+          className={`
+            inline-flex items-center gap-2 rounded-full
+            px-5 py-2 text-sm font-medium shadow-sm
+            transition-all focus:outline-none
+            ${disabled
+              ? "bg-neutral-200 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400 cursor-not-allowed"
+              : "bg-[color:var(--color-brand)] text-white hover:brightness-95 active:brightness-90"}
+          `}
         >
           {loading ? "Posting..." : "Post"}
         </button>
