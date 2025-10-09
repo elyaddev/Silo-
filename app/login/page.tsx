@@ -16,7 +16,10 @@ import zxcvbn from "zxcvbn";
 export default function LoginPage() {
   const router = useRouter();
   const search = useSearchParams();
-  const next = search.get("next") || "/dashboard";
+
+  // ✅ Default to home page instead of /dashboard
+  // (We ignore `next` on purpose to always land on "/")
+  const next = "/";
 
   // Read the optional `mode` query parameter.
   const initialModeParam =
@@ -46,9 +49,10 @@ export default function LoginPage() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (session?.user) router.replace(next);
+      // ✅ If already signed in, go straight to home
+      if (session?.user) router.replace("/");
     })();
-  }, [router, next]);
+  }, [router]);
 
   const handleErrorMessage = (err: unknown) => {
     const api = err as AuthApiError & { status?: number };
@@ -107,7 +111,8 @@ export default function LoginPage() {
             }
             throw upsertErr;
           }
-          router.push(next);
+          // ✅ After signup (no confirmation required), go home
+          router.push("/");
         } else {
           // Email confirmation ON
           setMsg(
@@ -122,7 +127,8 @@ export default function LoginPage() {
           password,
         });
         if (error) throw error;
-        router.push(next);
+        // ✅ After password sign-in, go home
+        router.push("/");
       }
     } catch (err) {
       setMsg(handleErrorMessage(err));
