@@ -1,7 +1,7 @@
 // This file is copied and adapted from the original repository.
-// It has been modified to pick the initial auth mode (sign‑in vs. sign‑up)
+// It has been modified to pick the initial auth mode (sign-in vs. sign-up)
 // from the `mode` query parameter.  If `mode=signup` is present in the URL
-// the page will default to the account creation view instead of the sign‑in
+// the page will default to the account creation view instead of the sign-in
 // view.  All other functionality remains unchanged.
 
 "use client";
@@ -9,6 +9,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { getBaseUrl } from "@/lib/getBaseUrl"; // 👈 use env-aware base URL
 import type { AuthApiError } from "@supabase/supabase-js";
 import zxcvbn from "zxcvbn";
 
@@ -17,10 +18,7 @@ export default function LoginPage() {
   const search = useSearchParams();
   const next = search.get("next") || "/dashboard";
 
-  // Read the optional `mode` query parameter.  If the caller specifies
-  // `mode=signup` we initialise the UI in sign‑up mode.  Otherwise we
-  // default to sign‑in.  This allows the top‑right “Sign up” button to
-  // link to `/login?mode=signup` instead of a missing `/signup` route.
+  // Read the optional `mode` query parameter.
   const initialModeParam =
     search.get("mode") === "signup" ? "signup" : "signin";
   const [mode, setMode] = useState<"signin" | "signup">(
@@ -83,12 +81,14 @@ export default function LoginPage() {
           throw new Error("Passwords do not match.");
         }
 
+        const emailRedirectTo = `${getBaseUrl()}/auth/callback`; // ✅ correct target
+
         const { data, error } = await supabase.auth.signUp({
           email,
           password, // no min length enforcement here
           options: {
             data: { username },
-            emailRedirectTo: "http://localhost:3002/login",
+            emailRedirectTo, // ✅ no more /login or port 3002
           },
         });
         if (error) throw error;
@@ -110,7 +110,9 @@ export default function LoginPage() {
           router.push(next);
         } else {
           // Email confirmation ON
-          setMsg("Account created! Please check your email to confirm before logging in.");
+          setMsg(
+            "Account created! Please check your email to confirm before logging in."
+          );
           setCanResend(true);
         }
       } else {
@@ -135,9 +137,15 @@ export default function LoginPage() {
       const { error } = await supabase.auth.resend({
         type: "signup",
         email,
+        options: {
+          // ensure new emails also go to the success screen
+          emailRedirectTo: `${getBaseUrl()}/auth/callback`,
+        },
       });
       if (error) throw error;
-      setMsg("Confirmation email re-sent. Please check your inbox (and spam).");
+      setMsg(
+        "Confirmation email re-sent. Please check your inbox (and spam)."
+      );
     } catch (err) {
       setMsg(handleErrorMessage(err));
     }
@@ -146,8 +154,9 @@ export default function LoginPage() {
   const resetPassword = async () => {
     setMsg(null);
     try {
+      // keep your /reset flow, but make the base URL env-aware
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: "http://localhost:3002/reset",
+        redirectTo: `${getBaseUrl()}/reset`,
       });
       if (error) throw error;
       setMsg("Password reset email sent. Check your inbox.");
@@ -192,7 +201,9 @@ export default function LoginPage() {
               <div className="mt-2">
                 <div className="h-2 w-full rounded bg-neutral-200 overflow-hidden">
                   <div
-                    className={`h-full transition-all ${score >= 3 ? "bg-green-500" : "bg-orange-500"}`}
+                    className={`h-full transition-all ${
+                      score >= 3 ? "bg-green-500" : "bg-orange-500"
+                    }`}
                     style={{ width: `${((score + 1) / 5) * 100}%` }}
                   />
                 </div>
@@ -248,11 +259,13 @@ export default function LoginPage() {
           {mode === "signin" ? (
             <>
               <div>
-                No account?{' '}
-                <button className="underline" onClick={() => setMode("signup")}>Create one</button>
+                No account?{" "}
+                <button className="underline" onClick={() => setMode("signup")}>
+                  Create one
+                </button>
               </div>
               <div>
-                Forgot password?{' '}
+                Forgot password?{" "}
                 <button className="underline" onClick={resetPassword}>
                   Send reset email
                 </button>
@@ -261,12 +274,14 @@ export default function LoginPage() {
           ) : (
             <>
               <div>
-                Already have an account?{' '}
-                <button className="underline" onClick={() => setMode("signin")}>Sign in</button>
+                Already have an account?{" "}
+                <button className="underline" onClick={() => setMode("signin")}>
+                  Sign in
+                </button>
               </div>
               {canResend && (
                 <div>
-                  Didn’t get the confirmation email?{' '}
+                  Didn’t get the confirmation email?{" "}
                   <button className="underline" onClick={resendConfirmation}>
                     Resend
                   </button>
