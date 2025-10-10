@@ -12,10 +12,12 @@ import {
 import Link from "next/link";
 
 function lineFor(n: Notification) {
+  // Use the alias display name; fall back to "Someone" when null.
+  const actor = n.actor_display_name ?? "Someone";
   if (n.type === "reply_to_you") {
-    return `${n.actor_username ? "@" + n.actor_username : "Someone"} replied to your message`;
+    return `${actor} replied to your message`;
   }
-  return `${n.actor_username ? "@" + n.actor_username : "Someone"} replied in a discussion you’re in`;
+  return `${actor} replied in a discussion you’re in`;
 }
 
 function hrefFor(n: Notification) {

@@ -24,7 +24,9 @@ export default function Navbar() {
   const pathname = usePathname();
   const [openMobile, setOpenMobile] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
-  const [username, setUsername] = useState<string | null>(null);
+  // We no longer display usernames; aliasing is per‑discussion.  This
+  // component simply shows "Account" when signed in.
+  const [username] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -46,16 +48,7 @@ export default function Navbar() {
         data: { session },
       } = await supabase.auth.getSession();
       setSignedIn(!!session?.user);
-      if (session?.user?.id) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("username")
-          .eq("id", session.user.id)
-          .maybeSingle();
-        setUsername(data?.username ?? null);
-      } else {
-        setUsername(null);
-      }
+      // We intentionally do not fetch or display usernames here.
     })();
   }, [pathname]);
 
@@ -105,15 +98,10 @@ export default function Navbar() {
                   onClick={() => setMenuOpen((o) => !o)}
                   className="rounded-lg border px-3 py-1.5 text-sm text-slate-700 hover:bg-neutral-50"
                 >
-                  {username ? `@${username}` : "Account"}
+                  Account
                 </button>
                 {menuOpen && (
                   <div className="absolute right-0 mt-2 w-40 rounded-lg border bg-white shadow-lg py-1 z-50">
-                    {username && (
-                      <div className="px-4 py-2 text-sm font-medium text-neutral-700">
-                        @{username}
-                      </div>
-                    )}
                     <Link
                       href="/account/activity"
                       className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"

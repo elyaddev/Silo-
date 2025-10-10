@@ -15,9 +15,10 @@ type Reply = {
   content: string;
   created_at: string;
   profile_id: string | null;
-  username: string | null;
   is_deleted: boolean;
   parent_id: number | null;
+  // display_name is computed client‑side using discussion aliases
+  display_name?: string | null;
 };
 
 export default async function DiscussionPage({
@@ -40,9 +41,7 @@ export default async function DiscussionPage({
 
   const { data: initialReplies } = await supabase
     .from("messages")
-    .select(
-      "id, content, created_at, profile_id, is_deleted, parent_id, profiles!messages_profile_id_fkey(username)"
-    )
+    .select("id, content, created_at, profile_id, is_deleted, parent_id")
     .eq("discussion_id", discussionId)
     .order("created_at", { ascending: true });
 
@@ -51,7 +50,6 @@ export default async function DiscussionPage({
     content: r.content,
     created_at: r.created_at,
     profile_id: r.profile_id ?? null,
-    username: r.profiles?.username ?? null,
     is_deleted: r.is_deleted ?? false,
     parent_id: r.parent_id ?? null,
   }));

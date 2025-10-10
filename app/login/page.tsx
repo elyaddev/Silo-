@@ -31,7 +31,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
-  const [username, setUsername] = useState("");
+  // Username creation has been removed.  Users are anonymous per discussion.
 
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -74,25 +74,19 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      if (mode === "signup") {
-        // Keep only basic checks: username format + passwords match.
-        if (!/^[a-z0-9_]{3,20}$/i.test(username)) {
-          throw new Error(
-            "Pick a username 3–20 chars (a–z, 0–9, underscore)."
-          );
-        }
+        if (mode === "signup") {
+        // Only check that the two passwords match when signing up.
         if (password !== password2) {
           throw new Error("Passwords do not match.");
         }
 
-        const emailRedirectTo = `${getBaseUrl()}/auth/callback`; // ✅ correct target
+        const emailRedirectTo = `${getBaseUrl()}/auth/callback`;
 
         const { data, error } = await supabase.auth.signUp({
           email,
-          password, // no min length enforcement here
+          password,
           options: {
-            data: { username },
-            emailRedirectTo, // ✅ no more /login or port 3002
+            emailRedirectTo,
           },
         });
         if (error) throw error;
@@ -101,20 +95,10 @@ export default function LoginPage() {
         const user = data?.user;
 
         if (session && user) {
-          // Email confirmation OFF
-          const { error: upsertErr } = await supabase
-            .from("profiles")
-            .upsert({ id: user.id, username }, { onConflict: "id" });
-          if (upsertErr) {
-            if ((upsertErr as any).code === "23505") {
-              throw new Error("That username is already taken.");
-            }
-            throw upsertErr;
-          }
-          // ✅ After signup (no confirmation required), go home
+          // Auto-created profiles via trigger; just route home
           router.push("/");
         } else {
-          // Email confirmation ON
+          // Confirmation email flow
           setMsg(
             "Account created! Please check your email to confirm before logging in."
           );
@@ -222,34 +206,17 @@ export default function LoginPage() {
           </div>
 
           {mode === "signup" && (
-            <>
-              <div>
-                <label className="block text-sm mb-1">Confirm password</label>
-                <input
-                  className="w-full border rounded px-3 py-2"
-                  type="password"
-                  value={password2}
-                  onChange={(e) => setPassword2(e.target.value)}
-                  required
-                  autoComplete="new-password"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm mb-1">Username</label>
-                <input
-                  className="w-full border rounded px-3 py-2"
-                  type="text"
-                  placeholder="e.g. elyad_osh"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value.toLowerCase())}
-                  required
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  3–20 chars, lowercase letters, numbers, underscore. Must be unique.
-                </p>
-              </div>
-            </>
+            <div>
+              <label className="block text-sm mb-1">Confirm password</label>
+              <input
+                className="w-full border rounded px-3 py-2"
+                type="password"
+                value={password2}
+                onChange={(e) => setPassword2(e.target.value)}
+                required
+                autoComplete="new-password"
+              />
+            </div>
           )}
 
           <button
