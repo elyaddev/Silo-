@@ -17,7 +17,9 @@ type Reply = {
   content: string;
   created_at: string;
   profile_id: string | null;
-  username?: string | null;
+  // display_name will be computed via discussion_aliases.  It is
+  // preformatted ("OP", "User 1", etc.).
+  display_name?: string | null;
   is_deleted: boolean;
   parent_id: number | null; // BIGINT
 };
@@ -43,8 +45,8 @@ export default function ThreadClient({
   const composerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Cache for usernames
-  const usernameCache = useRef<Map<string, string>>(new Map());
+  // Cache for alias labels keyed by `${discussion.id}:${profileId}`
+  const aliasCache = useRef<Map<string, string>>(new Map());
 
   // Load current user
   useEffect(() => {
@@ -56,29 +58,38 @@ export default function ThreadClient({
     })();
   }, []);
 
-  // Fetch username from profiles table if not cached
-  async function ensureUsername(profileId: string | null): Promise<string | null> {
+  // Resolve the alias label for a (discussion, user) pair.
+  async function ensureAlias(profileId: string | null): Promise<string | null> {
     if (!profileId) return null;
-    const cached = usernameCache.current.get(profileId);
+    const key = `${discussion.id}:${profileId}`;
+    const cached = aliasCache.current.get(key);
     if (cached) return cached;
     const { data } = await supabase
-      .from("profiles")
-      .select("username")
-      .eq("id", profileId)
+      .from("discussion_aliases")
+      .select("is_op, alias")
+      .eq("discussion_id", discussion.id)
+      .eq("user_id", profileId)
       .maybeSingle();
-    const uname = data?.username ?? null;
-    if (uname) usernameCache.current.set(profileId, uname);
-    return uname;
+    let label: string | null = null;
+    if (data) {
+      if (data.is_op) {
+        label = "OP";
+      } else if (data.alias !== null) {
+        label = `User ${data.alias}`;
+      }
+    }
+    if (label) aliasCache.current.set(key, label);
+    return label;
   }
 
-  // Ensure usernames on initial load
+  // Ensure display_names on initial load
   useEffect(() => {
     (async () => {
       const updated = await Promise.all(
         (replies || []).map(async (r) => {
-          if (r.username || !r.profile_id) return r;
-          const uname = await ensureUsername(r.profile_id);
-          return { ...r, username: uname };
+          if (r.display_name || !r.profile_id) return r;
+          const aliasLabel = await ensureAlias(r.profile_id);
+          return { ...r, display_name: aliasLabel };
         })
       );
       setReplies(updated);
@@ -100,7 +111,7 @@ export default function ThreadClient({
         },
         async (payload) => {
           const m = payload.new as any;
-          const uname = await ensureUsername(m.profile_id ?? null);
+          const aliasLabel = await ensureAlias(m.profile_id ?? null);
           setReplies((prev) => [
             ...prev,
             {
@@ -108,7 +119,7 @@ export default function ThreadClient({
               content: m.content,
               created_at: m.created_at,
               profile_id: m.profile_id ?? null,
-              username: uname ?? null,
+              display_name: aliasLabel ?? null,
               is_deleted: m.is_deleted ?? false,
               parent_id: (m.parent_id ?? null) as number | null,
             },
@@ -125,7 +136,7 @@ export default function ThreadClient({
         },
         async (payload) => {
           const m = payload.new as any;
-          const uname = await ensureUsername(m.profile_id ?? null);
+          const aliasLabel = await ensureAlias(m.profile_id ?? null);
           setReplies((prev) =>
             prev.map((r) =>
               r.id === m.id
@@ -134,7 +145,7 @@ export default function ThreadClient({
                     content: m.content,
                     created_at: m.created_at,
                     profile_id: m.profile_id ?? null,
-                    username: uname ?? null,
+                    display_name: aliasLabel ?? null,
                     is_deleted: m.is_deleted ?? false,
                     parent_id: (m.parent_id ?? null) as number | null,
                   }
@@ -262,7 +273,7 @@ export default function ThreadClient({
     return (
       <div className="rounded-2xl border bg-white px-5 py-4 shadow-sm">
         <div className="text-[13px] md:text-sm font-semibold text-slate-800 flex items-center gap-2">
-          <span>{msg.username ? `@${msg.username}` : "anonymous"}</span>
+          <span>{msg.display_name ?? "anonymous"}</span>
           {mine && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
               you

@@ -9,13 +9,25 @@ import supabase from "@/lib/supabaseClient";
  * - Subscribes to realtime inserts
  * - Adds deep-link anchors (id="m-<message_id>") and auto-scrolls to #m-<id>
  */
+/**
+ * Message rows are now selected from the `v_messages_with_alias` view.
+ * In addition to the standard message fields, the view exposes
+ * per‑discussion alias information.  `is_op` is true when the sender is
+ * the original poster for the discussion.  When not the OP, `alias`
+ * will be an integer (1, 2, …) assigned in order of each participant’s
+ * first reply.  `display_name` contains a preformatted label to show
+ * alongside the message (e.g. "OP" or "User 1").
+ */
 type Message = {
-  id: string;               // your schema uses string here (fine)
+  id: string;
   content: string;
   created_at: string;
   profile_id: string | null;
   room_id: string;
   discussion_id: string | null;
+  is_op: boolean | null;
+  alias: number | null;
+  display_name: string | null;
 };
 
 const PAGE_SIZE = 50;
@@ -72,8 +84,10 @@ export default function ChatMessages({
     (async () => {
       setLoading(true);
       const { data, error } = await supabase
-        .from("messages")
-        .select("id, content, created_at, profile_id, room_id, discussion_id")
+        .from("v_messages_with_alias")
+        .select(
+          "id, content, created_at, profile_id, room_id, discussion_id, is_op, alias, display_name"
+        )
         .eq("room_id", roomId)
         .eq("discussion_id", discussionId)
         .order("created_at", { ascending: false })
@@ -111,7 +125,8 @@ export default function ChatMessages({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, discussionId]);
 
-  // Realtime subscription to new inserts
+  // Realtime subscription to new inserts.  When a new message arrives we
+  // fetch its alias metadata from the view to enrich the row.
   useEffect(() => {
     const channel = supabase
       .channel(`messages-disc-${discussionId}`)
@@ -123,8 +138,18 @@ export default function ChatMessages({
           table: "messages",
           filter: `discussion_id=eq.${discussionId}`,
         },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
+        async (payload) => {
+          const inserted = payload.new as Message;
+          // hydrate with alias fields by selecting from the view
+          const { data: row, error } = await supabase
+            .from("v_messages_with_alias")
+            .select(
+              "id, content, created_at, profile_id, room_id, discussion_id, is_op, alias, display_name"
+            )
+            .eq("id", inserted.id)
+            .single();
+          const enriched = row ?? inserted;
+          setMessages((prev) => [...prev, enriched as Message]);
           // If user landed via anchor, don't yank to the bottom
           if (!wantsAnchorScroll && atBottomRef.current) {
             setTimeout(() => scrollToBottom(), 0);
@@ -148,8 +173,10 @@ export default function ChatMessages({
     const prevHeight = viewportRef.current?.scrollHeight ?? 0;
 
     const { data, error } = await supabase
-      .from("messages")
-      .select("id, content, created_at, profile_id, room_id, discussion_id")
+      .from("v_messages_with_alias")
+      .select(
+        "id, content, created_at, profile_id, room_id, discussion_id, is_op, alias, display_name"
+      )
       .eq("room_id", roomId)
       .eq("discussion_id", discussionId)
       .lt("created_at", first.created_at)
@@ -201,9 +228,9 @@ export default function ChatMessages({
               <div key={m.id} id={`m-${m.id}`} className="group">
                 <div className="flex items-center justify-between">
                   <div className="flex items-baseline gap-2">
-                    {/* Replace @anon with actual handle once you join profiles */}
+                    {/* Show per‑discussion alias; falls back to generic 'User' */}
                     <span className="text-sm font-medium text-[var(--color-text)]">
-                      @anon
+                      {m.display_name ?? "User"}
                     </span>
                     <time className="text-xs text-[var(--color-muted)]">
                       {new Date(m.created_at).toLocaleTimeString([], {

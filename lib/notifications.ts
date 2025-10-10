@@ -9,11 +9,13 @@ export type Notification = {
   created_at: string;
   read_at: string | null;
 
-  // enriched from the view
-  actor_username: string | null;
+  // enriched from the notification_items view
   message_preview: string | null;
   parent_id: number | null;
   discussion_id: string | null; // uuid (may be null in some rows)
+  actor_is_op: boolean | null;
+  actor_alias: number | null;
+  actor_display_name: string | null;
 };
 
 export async function fetchUnreadCount() {
