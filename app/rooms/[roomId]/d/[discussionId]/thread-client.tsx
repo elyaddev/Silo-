@@ -1,3 +1,4 @@
+// app/rooms/[roomId]/d/[discussionId]/thread-client.tsx
 "use client";
 
 import { useEffect, useRef, useState, useMemo } from "react";
@@ -17,8 +18,7 @@ type Reply = {
   content: string;
   created_at: string;
   profile_id: string | null;
-  // display_name will be computed via discussion_aliases.  It is
-  // preformatted ("OP", "User 1", etc.).
+  // We'll normalize this to "OP" or "<number>" (no "User 1")
   display_name?: string | null;
   is_deleted: boolean;
   parent_id: number | null; // BIGINT
@@ -45,10 +45,10 @@ export default function ThreadClient({
   const composerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Cache for alias labels keyed by `${discussion.id}:${profileId}`
+  // Cache for normalized labels keyed by `${discussion.id}:${profileId}`
   const aliasCache = useRef<Map<string, string>>(new Map());
 
-  // Load current user
+  // Load current user (we won't render "you", but we keep ownership logic)
   useEffect(() => {
     (async () => {
       const {
@@ -58,38 +58,51 @@ export default function ThreadClient({
     })();
   }, []);
 
-  // Resolve the alias label for a (discussion, user) pair.
+  /** Normalize any label to "OP" or digits-only ("1", "2", ...) */
+  function normalizeLabel(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    if (/^OP$/i.test(trimmed)) return "OP";
+    // Strip "User ", optional "#", and keep just digits
+    const m = trimmed.match(/(?:User\s*)?#?\s*(\d+)/i);
+    if (m) return m[1];
+    return null;
+  }
+
+  // Resolve/compute the alias label for a (discussion, user) pair.
   async function ensureAlias(profileId: string | null): Promise<string | null> {
     if (!profileId) return null;
     const key = `${discussion.id}:${profileId}`;
     const cached = aliasCache.current.get(key);
     if (cached) return cached;
+
     const { data } = await supabase
       .from("discussion_aliases")
       .select("is_op, alias")
       .eq("discussion_id", discussion.id)
       .eq("user_id", profileId)
       .maybeSingle();
+
     let label: string | null = null;
     if (data) {
-      if (data.is_op) {
-        label = "OP";
-      } else if (data.alias !== null) {
-        label = `User ${data.alias}`;
-      }
+      if (data.is_op) label = "OP";
+      else if (data.alias !== null && data.alias !== undefined)
+        label = String(data.alias); // just the number
     }
     if (label) aliasCache.current.set(key, label);
     return label;
   }
 
-  // Ensure display_names on initial load
+  // Ensure/normalize display_names on initial load
   useEffect(() => {
     (async () => {
       const updated = await Promise.all(
         (replies || []).map(async (r) => {
-          if (r.display_name || !r.profile_id) return r;
-          const aliasLabel = await ensureAlias(r.profile_id);
-          return { ...r, display_name: aliasLabel };
+          // Prefer existing display_name if it normalizes cleanly
+          const norm =
+            normalizeLabel(r.display_name ?? null) ??
+            (r.profile_id ? await ensureAlias(r.profile_id) : null);
+          return { ...r, display_name: norm };
         })
       );
       setReplies(updated);
@@ -111,7 +124,9 @@ export default function ThreadClient({
         },
         async (payload) => {
           const m = payload.new as any;
-          const aliasLabel = await ensureAlias(m.profile_id ?? null);
+          const norm =
+            (await ensureAlias(m.profile_id ?? null)) ??
+            normalizeLabel(m.display_name ?? null);
           setReplies((prev) => [
             ...prev,
             {
@@ -119,7 +134,7 @@ export default function ThreadClient({
               content: m.content,
               created_at: m.created_at,
               profile_id: m.profile_id ?? null,
-              display_name: aliasLabel ?? null,
+              display_name: norm ?? null,
               is_deleted: m.is_deleted ?? false,
               parent_id: (m.parent_id ?? null) as number | null,
             },
@@ -136,7 +151,9 @@ export default function ThreadClient({
         },
         async (payload) => {
           const m = payload.new as any;
-          const aliasLabel = await ensureAlias(m.profile_id ?? null);
+          const norm =
+            (await ensureAlias(m.profile_id ?? null)) ??
+            normalizeLabel(m.display_name ?? null);
           setReplies((prev) =>
             prev.map((r) =>
               r.id === m.id
@@ -145,7 +162,7 @@ export default function ThreadClient({
                     content: m.content,
                     created_at: m.created_at,
                     profile_id: m.profile_id ?? null,
-                    display_name: aliasLabel ?? null,
+                    display_name: norm ?? null,
                     is_deleted: m.is_deleted ?? false,
                     parent_id: (m.parent_id ?? null) as number | null,
                   }
@@ -168,7 +185,6 @@ export default function ThreadClient({
   // Helper: scroll to composer and focus
   function goToComposer() {
     composerRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    // focus slightly after scroll starts
     setTimeout(() => inputRef.current?.focus(), 150);
   }
 
@@ -274,11 +290,8 @@ export default function ThreadClient({
       <div className="rounded-2xl border bg-white px-5 py-4 shadow-sm">
         <div className="text-[13px] md:text-sm font-semibold text-slate-800 flex items-center gap-2">
           <span>{msg.display_name ?? "anonymous"}</span>
-          {mine && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
-              you
-            </span>
-          )}
+          {/* Removed the 'you' chip entirely */}
+          {/* {mine && <span className="...">you</span>} */}
         </div>
         <p className="mt-1 whitespace-pre-wrap text-[15px] md:text-[16px] leading-relaxed text-slate-800">
           {msg.content}
@@ -295,7 +308,7 @@ export default function ThreadClient({
                     id: String(msg.id),
                     excerpt: msg.content.slice(0, 80),
                   });
-                  goToComposer(); // scroll & focus
+                  goToComposer();
                 }}
               >
                 Reply
@@ -346,7 +359,11 @@ export default function ThreadClient({
                       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
                   )
                   .map((c) => (
-                    <div key={c.id} id={`msg-${c.id}`} className="ml-3 border-l-2 border-gray-200 pl-4">
+                    <div
+                      key={c.id}
+                      id={`msg-${c.id}`}
+                      className="ml-3 border-l-2 border-gray-200 pl-4"
+                    >
                       <MessageCard msg={c} />
                     </div>
                   ))}

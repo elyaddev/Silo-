@@ -1,3 +1,4 @@
+// components/ChatMessages.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -10,13 +11,9 @@ import supabase from "@/lib/supabaseClient";
  * - Adds deep-link anchors (id="m-<message_id>") and auto-scrolls to #m-<id>
  */
 /**
- * Message rows are now selected from the `v_messages_with_alias` view.
- * In addition to the standard message fields, the view exposes
- * per‑discussion alias information.  `is_op` is true when the sender is
- * the original poster for the discussion.  When not the OP, `alias`
- * will be an integer (1, 2, …) assigned in order of each participant’s
- * first reply.  `display_name` contains a preformatted label to show
- * alongside the message (e.g. "OP" or "User 1").
+ * Message rows are selected from the `v_messages_with_alias` view.
+ * We intentionally IGNORE `display_name` to avoid "User 1" / "you".
+ * Label rules: OP → "OP"; else alias number → "1", "2", ...; else blank.
  */
 type Message = {
   id: string;
@@ -27,7 +24,7 @@ type Message = {
   discussion_id: string | null;
   is_op: boolean | null;
   alias: number | null;
-  display_name: string | null;
+  display_name: string | null; // ignored for rendering
 };
 
 const PAGE_SIZE = 50;
@@ -78,6 +75,13 @@ export default function ChatMessages({
     }
   }
 
+  // Label logic: NO "you", NO "User 1". Only "OP" or the number "1", "2", ...
+  function labelFor(m: Message): string {
+    if (m.is_op) return "OP";
+    if (m.alias !== null && m.alias !== undefined) return String(m.alias);
+    return ""; // anonymous → no badge text
+  }
+
   // Initial fetch of the most recent messages
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +116,10 @@ export default function ChatMessages({
             el.scrollIntoView({ behavior: "smooth", block: "center" });
             // subtle highlight for context
             el.classList.add("ring-2", "ring-orange-400");
-            setTimeout(() => el.classList.remove("ring-2", "ring-orange-400"), 1200);
+            setTimeout(
+              () => el.classList.remove("ring-2", "ring-orange-400"),
+              1200
+            );
             return;
           }
         }
@@ -125,8 +132,7 @@ export default function ChatMessages({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, discussionId]);
 
-  // Realtime subscription to new inserts.  When a new message arrives we
-  // fetch its alias metadata from the view to enrich the row.
+  // Realtime subscription to new inserts
   useEffect(() => {
     const channel = supabase
       .channel(`messages-disc-${discussionId}`)
@@ -141,7 +147,7 @@ export default function ChatMessages({
         async (payload) => {
           const inserted = payload.new as Message;
           // hydrate with alias fields by selecting from the view
-          const { data: row, error } = await supabase
+          const { data: row } = await supabase
             .from("v_messages_with_alias")
             .select(
               "id, content, created_at, profile_id, room_id, discussion_id, is_op, alias, display_name"
@@ -150,7 +156,6 @@ export default function ChatMessages({
             .single();
           const enriched = row ?? inserted;
           setMessages((prev) => [...prev, enriched as Message]);
-          // If user landed via anchor, don't yank to the bottom
           if (!wantsAnchorScroll && atBottomRef.current) {
             setTimeout(() => scrollToBottom(), 0);
           }
@@ -224,28 +229,33 @@ export default function ChatMessages({
               </div>
             )}
 
-            {messages.map((m) => (
-              <div key={m.id} id={`m-${m.id}`} className="group">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-baseline gap-2">
-                    {/* Show per‑discussion alias; falls back to generic 'User' */}
-                    <span className="text-sm font-medium text-[var(--color-text)]">
-                      {m.display_name ?? "User"}
-                    </span>
-                    <time className="text-xs text-[var(--color-muted)]">
-                      {new Date(m.created_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </time>
+            {messages.map((m) => {
+              const label = labelFor(m);
+              return (
+                <div key={m.id} id={`m-${m.id}`} className="group">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-baseline gap-2">
+                      {/* Badge: OP or just the number; never "you", never "User 1" */}
+                      {label && (
+                        <span className="text-sm font-medium text-[var(--color-text)]">
+                          {label}
+                        </span>
+                      )}
+                      <time className="text-xs text-[var(--color-muted)]">
+                        {new Date(m.created_at).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </time>
+                    </div>
+                  </div>
+
+                  <div className="mt-1 rounded-2xl px-3 py-2 bg-[var(--color-background)] border border-[var(--color-border)] text-[var(--color-text)] whitespace-pre-wrap">
+                    {m.content}
                   </div>
                 </div>
-
-                <div className="mt-1 rounded-2xl px-3 py-2 bg-[var(--color-background)] border border-[var(--color-border)] text-[var(--color-text)] whitespace-pre-wrap">
-                  {m.content}
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {!reachedStart && !loadingOlder && (
               <div className="text-center text-xs text-[var(--color-muted)] pb-1">
