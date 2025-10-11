@@ -1,11 +1,19 @@
-// app/rooms/[roomId]/d/[discussionId]/thread-client.tsx
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+  useTransition,
+  memo,
+} from "react";
 import supabase from "@/lib/supabaseClient";
 import { logActivity } from "@/lib/logActivity";
 import ClientTime from "@/components/ClientTime";
 
+/** ─────────────────────────── Types ─────────────────────────── */
 type Discussion = {
   id: string;
   title: string;
@@ -18,14 +26,25 @@ type Reply = {
   content: string;
   created_at: string;
   profile_id: string | null;
-  // We'll normalize this to "OP" or "<number>" (no "User 1")
   display_name?: string | null;
   is_deleted: boolean;
-  parent_id: number | null; // BIGINT
+  parent_id: number | null;
 };
 
 type ReplyTarget = { id: string; excerpt?: string };
+type ParentPreview = { id: number; excerpt: string; authorLabel: string | null };
 
+/** ─────────────────────────── Helpers ───────────────────────── */
+function byCreatedAsc(a: { created_at: string }, b: { created_at: string }) {
+  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+}
+function isNearBottom(container: HTMLElement | null, px = 120) {
+  if (!container) return true;
+  const { scrollTop, scrollHeight, clientHeight } = container;
+  return scrollHeight - (scrollTop + clientHeight) < px;
+}
+
+/** ───────────────────────── Component ───────────────────────── */
 export default function ThreadClient({
   roomId,
   discussion,
@@ -35,41 +54,55 @@ export default function ThreadClient({
   discussion: Discussion;
   initialReplies: Reply[];
 }) {
-  const [replies, setReplies] = useState<Reply[]>(initialReplies || []);
+  const [replies, setReplies] = useState<Reply[]>(
+    (initialReplies ?? []).slice().sort(byCreatedAsc)
+  );
   const [content, setContent] = useState("");
   const [posting, setPosting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
+  const [isPending, startTransition] = useTransition();
 
+  const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Cache for normalized labels keyed by `${discussion.id}:${profileId}`
   const aliasCache = useRef<Map<string, string>>(new Map());
+  const parentPreviewCache = useRef<Map<number, ParentPreview>>(new Map());
+  const sendingIds = useRef<Set<string>>(new Set());
 
-  // Load current user (we won't render "you", but we keep ownership logic)
+  /** Helpers */
+  const upsertReply = useCallback((list: Reply[], row: Reply): Reply[] => {
+    const idStr = String(row.id);
+    let replaced = false;
+    const next = list.map((r) => {
+      if (String(r.id) === idStr) {
+        replaced = true;
+        return row;
+      }
+      return r;
+    });
+    const out = replaced ? next : [...next, row];
+    out.sort(byCreatedAsc);
+    return out;
+  }, []);
+
   useEffect(() => {
     (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       setCurrentUserId(session?.user?.id ?? null);
     })();
   }, []);
 
-  /** Normalize any label to "OP" or digits-only ("1", "2", ...) */
-  function normalizeLabel(raw: string | null | undefined): string | null {
+  const normalizeLabel = (raw?: string | null) => {
     if (!raw) return null;
-    const trimmed = raw.trim();
-    if (/^OP$/i.test(trimmed)) return "OP";
-    // Strip "User ", optional "#", and keep just digits
-    const m = trimmed.match(/(?:User\s*)?#?\s*(\d+)/i);
-    if (m) return m[1];
-    return null;
-  }
+    const t = raw.trim();
+    if (/^OP$/i.test(t)) return "OP";
+    const m = t.match(/(?:User\s*)?#?\s*(\d+)/i);
+    return m ? m[1] : null;
+  };
 
-  // Resolve/compute the alias label for a (discussion, user) pair.
   async function ensureAlias(profileId: string | null): Promise<string | null> {
     if (!profileId) return null;
     const key = `${discussion.id}:${profileId}`;
@@ -87,131 +120,86 @@ export default function ThreadClient({
     if (data) {
       if (data.is_op) label = "OP";
       else if (data.alias !== null && data.alias !== undefined)
-        label = String(data.alias); // just the number
+        label = String(data.alias);
     }
     if (label) aliasCache.current.set(key, label);
     return label;
   }
 
-  // Ensure/normalize display_names on initial load
   useEffect(() => {
     (async () => {
       const updated = await Promise.all(
         (replies || []).map(async (r) => {
-          // Prefer existing display_name if it normalizes cleanly
           const norm =
-            normalizeLabel(r.display_name ?? null) ??
+            normalizeLabel(r.display_name) ??
             (r.profile_id ? await ensureAlias(r.profile_id) : null);
           return { ...r, display_name: norm };
         })
       );
       setReplies(updated);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Realtime subscription for inserts and updates
   useEffect(() => {
     const channel = supabase
       .channel(`replies:${discussion.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `discussion_id=eq.${discussion.id}`,
-        },
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `discussion_id=eq.${discussion.id}` },
         async (payload) => {
           const m = payload.new as any;
-          const norm =
-            (await ensureAlias(m.profile_id ?? null)) ??
-            normalizeLabel(m.display_name ?? null);
-          setReplies((prev) => [
-            ...prev,
-            {
-              id: m.id,
-              content: m.content,
-              created_at: m.created_at,
-              profile_id: m.profile_id ?? null,
-              display_name: norm ?? null,
-              is_deleted: m.is_deleted ?? false,
-              parent_id: (m.parent_id ?? null) as number | null,
-            },
-          ]);
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "messages",
-          filter: `discussion_id=eq.${discussion.id}`,
-        },
-        async (payload) => {
-          const m = payload.new as any;
-          const norm =
-            (await ensureAlias(m.profile_id ?? null)) ??
-            normalizeLabel(m.display_name ?? null);
-          setReplies((prev) =>
-            prev.map((r) =>
-              r.id === m.id
-                ? {
-                    ...r,
-                    content: m.content,
-                    created_at: m.created_at,
-                    profile_id: m.profile_id ?? null,
-                    display_name: norm ?? null,
-                    is_deleted: m.is_deleted ?? false,
-                    parent_id: (m.parent_id ?? null) as number | null,
-                  }
-                : r
-            )
-          );
+          const label = await ensureAlias(m.profile_id ?? null);
+          const row: Reply = {
+            id: m.id,
+            content: m.content,
+            created_at: m.created_at,
+            profile_id: m.profile_id ?? null,
+            display_name: label,
+            is_deleted: m.is_deleted ?? false,
+            parent_id: (m.parent_id ?? null) as number | null,
+          };
+          startTransition(() => {
+            setReplies((prev) => upsertReply(prev, row));
+          });
         }
       )
       .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [discussion.id]);
+    return () => { void supabase.removeChannel(channel); };
+  }, [discussion.id, upsertReply]);
 
-  // Scroll to bottom when replies change
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [replies.length]);
-
-  // Helper: scroll to composer and focus
-  function goToComposer() {
+  const goToComposer = useCallback(() => {
     composerRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    setTimeout(() => inputRef.current?.focus(), 150);
-  }
+    setTimeout(() => inputRef.current?.focus(), 80);
+  }, []);
 
-  // Helper: scroll back to a message card by id
-  function scrollToMessageId(id: number | null) {
-    if (id === null || id === undefined) return;
-    const el = document.getElementById(`msg-${id}`);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-
-  // Send a new reply (with optional parent)
-  async function send() {
+  /** Send reply */
+  const send = useCallback(async () => {
     const text = content.trim();
-    if (!text) return;
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    if (!text || posting) return;
+    const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       alert("You must be signed in to reply.");
       return;
     }
+    const parentNumeric = replyTarget ? Number(replyTarget.id) : null;
+    const signature = `${session.user.id}|${discussion.id}|${parentNumeric}|${text}`;
+    if (sendingIds.current.has(signature)) return;
+    sendingIds.current.add(signature);
+
+    const tempId = `tmp-${Date.now()}`;
+    const optimistic: Reply = {
+      id: tempId,
+      content: text,
+      created_at: new Date().toISOString(),
+      profile_id: session.user.id,
+      display_name:
+        (await ensureAlias(session.user.id)) ?? normalizeLabel("OP") ?? undefined,
+      is_deleted: false,
+      parent_id: parentNumeric,
+    };
+    startTransition(() => {
+      setReplies((prev) => upsertReply(prev, optimistic));
+    });
 
     setPosting(true);
-
-    const parentNumeric = replyTarget ? Number(replyTarget.id) : null;
-
     const { data, error } = await supabase
       .from("messages")
       .insert({
@@ -222,21 +210,34 @@ export default function ThreadClient({
       })
       .select("id, content, created_at, profile_id, is_deleted, parent_id")
       .single();
-
     setPosting(false);
+    sendingIds.current.delete(signature);
+
     if (error) {
+      console.error(error);
+      setReplies((prev) => prev.filter((r) => r.id !== tempId));
       alert(error.message);
       return;
     }
 
+    const label = await ensureAlias(data?.profile_id ?? null);
+    const confirmed: Reply = {
+      id: data!.id,
+      content: data!.content,
+      created_at: data!.created_at,
+      profile_id: data!.profile_id ?? null,
+      display_name: label,
+      is_deleted: data!.is_deleted ?? false,
+      parent_id: (data!.parent_id ?? null) as number | null,
+    };
+    startTransition(() => {
+      setReplies((prev) =>
+        prev.map((r) => (r.id === tempId ? confirmed : r)).sort(byCreatedAsc)
+      );
+    });
+
     setContent("");
     setReplyTarget(null);
-
-    // After replying, scroll back to the parent message (where the reply will appear)
-    setTimeout(() => {
-      scrollToMessageId(parentNumeric);
-    }, 50);
-
     try {
       await logActivity("reply_created", {
         roomId,
@@ -245,78 +246,79 @@ export default function ThreadClient({
         excerpt: text.slice(0, 140),
       });
     } catch {}
+  }, [content, posting, replyTarget, roomId, discussion.id, upsertReply]);
+
+  const handleDelete = useCallback(async (id: number | string) => {
+    await supabase.from("messages").update({ is_deleted: true }).eq("id", id);
+  }, []);
+
+  const flatReplies = useMemo(
+    () => (replies ?? []).slice().sort(byCreatedAsc),
+    [replies]
+  );
+
+  /** ───────────────────────── Render ────────────────────────── */
+  function Pill({
+    text,
+    tone = "neutral",
+  }: {
+    text: string;
+    tone?: "neutral" | "brand";
+  }) {
+    const cls =
+      tone === "brand"
+        ? "bg-[#FFF3E7] text-[#7B3E00] border-[#FFD9B8]"
+        : "bg-neutral-50 text-neutral-700 border-neutral-300";
+    return (
+      <span
+        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] ${cls}`}
+      >
+        {text}
+      </span>
+    );
   }
 
-  // Soft-delete a message (owner only)
-  async function handleDelete(id: number | string) {
-    const { error } = await supabase
-      .from("messages")
-      .update({ is_deleted: true })
-      .eq("id", id);
-    if (error) {
-      alert(error.message);
-    }
-  }
-
-  // Group into root-level and child replies
-  const { rootReplies, childrenMap } = useMemo(() => {
-    const map = new Map<number | string, Reply[]>();
-    const roots: Reply[] = [];
-    for (const m of replies) {
-      if (m.parent_id !== null && m.parent_id !== undefined) {
-        const key = m.parent_id;
-        const arr = map.get(key) ?? [];
-        arr.push(m);
-        map.set(key, arr);
-      } else {
-        roots.push(m);
-      }
-    }
-    return { rootReplies: roots, childrenMap: map };
-  }, [replies]);
-
-  function MessageCard({ msg }: { msg: Reply }) {
+  const MessageCard = memo(function MessageCard({ msg }: { msg: Reply }) {
     const mine = !!currentUserId && msg.profile_id === currentUserId;
-
     if (msg.is_deleted) {
       return (
-        <div className="rounded-2xl border border-dashed bg-neutral-50 px-4 py-3 italic text-neutral-500 text-sm">
+        <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 italic text-neutral-500 text-sm">
           This reply was deleted.
         </div>
       );
     }
-
     return (
-      <div className="rounded-2xl border bg-white px-5 py-4 shadow-sm">
-        <div className="text-[13px] md:text-sm font-semibold text-slate-800 flex items-center gap-2">
-          <span>{msg.display_name ?? "anonymous"}</span>
-          {/* Removed the 'you' chip entirely */}
-          {/* {mine && <span className="...">you</span>} */}
+      <div
+        className="rounded-3xl border border-neutral-200 bg-white px-5 py-4 shadow-[0_6px_18px_rgba(0,0,0,0.04)]"
+        id={`msg-${msg.id}`}
+      >
+        <div className="mb-2">
+          <Pill
+            text={msg.display_name ?? "anonymous"}
+            tone={msg.display_name === "OP" ? "brand" : "neutral"}
+          />
         </div>
-        <p className="mt-1 whitespace-pre-wrap text-[15px] md:text-[16px] leading-relaxed text-slate-800">
+        <p className="whitespace-pre-wrap text-[16px] leading-relaxed text-neutral-900">
           {msg.content}
         </p>
-        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+        <div className="mt-2 flex items-center justify-between text-[12px] text-neutral-600">
           <ClientTime iso={msg.created_at} />
           <div className="flex gap-2">
-            {/* Only allow replying to ROOT messages (parent_id === null) */}
-            {msg.parent_id === null && (
-              <button
-                className="underline hover:no-underline"
-                onClick={() => {
-                  setReplyTarget({
-                    id: String(msg.id),
-                    excerpt: msg.content.slice(0, 80),
-                  });
-                  goToComposer();
-                }}
-              >
-                Reply
-              </button>
-            )}
+            <button
+              className="rounded-full px-3 py-1 text-[12px] border border-neutral-300 hover:bg-neutral-50"
+              onClick={() => {
+                setReplyTarget({
+                  id: String(msg.id),
+                  excerpt: msg.content.slice(0, 120),
+                });
+                goToComposer();
+              }}
+            >
+              Reply
+            </button>
             {mine && (
               <button
-                className="underline hover:no-underline text-red-500"
+                className="rounded-full px-3 py-1 text-[12px] border border-red-300 text-red-600 hover:bg-red-50"
                 onClick={() => handleDelete(msg.id)}
               >
                 Delete
@@ -326,67 +328,46 @@ export default function ThreadClient({
         </div>
       </div>
     );
-  }
+  });
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-8 space-y-8">
-      {/* Question card */}
-      <div className="rounded-3xl border bg-white p-6 shadow-sm">
+    <div className="mx-auto max-w-4xl px-6 pb-24 pt-8 space-y-8">
+      {/* Question */}
+      <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-[0_6px_18px_rgba(0,0,0,0.04)]">
         <div className="mb-2">
-          <span className="rounded-full px-2 py-0.5 text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-100">
+          <span className="rounded-full px-2 py-0.5 text-[11px] font-medium bg-neutral-50 text-neutral-800 border border-neutral-300">
             Question
           </span>
         </div>
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-neutral-900">
           {discussion.title}
         </h1>
-        {discussion.body ? (
-          <p className="mt-2 text-slate-700 whitespace-pre-wrap">{discussion.body}</p>
-        ) : null}
+        {discussion.body && (
+          <p className="mt-2 text-neutral-800 whitespace-pre-wrap">
+            {discussion.body}
+          </p>
+        )}
       </div>
 
-      {/* Replies (roots + 1-level children) */}
-      <div className="space-y-3">
-        {rootReplies.map((m) => (
-          <div key={m.id} id={`msg-${m.id}`}>
-            <MessageCard msg={m} />
-            {!!childrenMap.get(m.id)?.length && (
-              <div className="mt-3 space-y-3">
-                {childrenMap
-                  .get(m.id)!
-                  .sort(
-                    (a, b) =>
-                      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-                  )
-                  .map((c) => (
-                    <div
-                      key={c.id}
-                      id={`msg-${c.id}`}
-                      className="ml-3 border-l-2 border-gray-200 pl-4"
-                    >
-                      <MessageCard msg={c} />
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
+      {/* Replies */}
+      <div ref={listRef} className="space-y-4">
+        {flatReplies.map((m) => (
+          <MessageCard key={String(m.id)} msg={m} />
         ))}
         <div ref={bottomRef} />
       </div>
 
-      {/* Composer with reply-to pill */}
-      <div ref={composerRef} className="rounded-2xl border bg-white p-4">
+      {/* Composer */}
+      <div
+        ref={composerRef}
+        className="sticky bottom-0 z-10 border-t border-neutral-200 bg-white/95 backdrop-blur-sm p-4 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] max-w-4xl mx-auto"
+      >
         {replyTarget && (
-          <div className="mb-2 flex items-center gap-2 text-sm rounded-2xl border px-3 py-2 bg-orange-50">
-            <span className="text-orange-600">Replying to:</span>
-            <span className="line-clamp-1">{replyTarget.excerpt}</span>
-            <button
-              type="button"
-              onClick={() => setReplyTarget(null)}
-              className="ml-auto rounded-lg border px-2 py-1 hover:bg-white"
-            >
-              Cancel
-            </button>
+          <div
+            className="mb-3 truncate rounded-2xl border border-[#FFD9B8] bg-[#FFF7EF] px-3 py-2 text-[14px] text-[#5C3B23]"
+            style={{ borderLeftWidth: 4, borderLeftColor: "var(--color-brand)" }}
+          >
+            {replyTarget.excerpt}
           </div>
         )}
         <div className="flex gap-2">
@@ -394,11 +375,13 @@ export default function ThreadClient({
             ref={inputRef}
             type="text"
             placeholder={
-              replyTarget ? "Write a reply to this message…" : "Write a reply…"
+              replyTarget ? "Write a reply to this…" : "Write a reply…"
             }
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            className="w-full rounded-xl border px-4 py-2 outline-none focus:ring-2 focus:ring-orange-500 text-[16px]"
+            className="w-full rounded-3xl border border-neutral-300 px-5 py-3 text-neutral-900 placeholder-neutral-500 outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] shadow-sm transition-all"
+
+
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -408,8 +391,8 @@ export default function ThreadClient({
           />
           <button
             onClick={send}
-            disabled={posting || !content.trim()}
-            className="rounded-xl border px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
+            disabled={posting || isPending || !content.trim()}
+            className="rounded-full px-5 py-3 bg-[var(--color-brand)] text-white font-semibold disabled:opacity-50 hover:brightness-95"
           >
             {posting ? "Sending…" : "Reply"}
           </button>

@@ -1,22 +1,27 @@
 // lib/supabaseClient.ts
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!url || !anonKey) {
-  throw new Error(
-    'Missing Supabase environment variables. Please define NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local',
-  );
+declare global {
+  // eslint-disable-next-line no-var
+  var __sb__: SupabaseClient | undefined
 }
 
-const supabase: SupabaseClient = createClient(url, anonKey, {
-  auth: {
-    // persist the session in memory (optional)
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export { supabase };
-export default supabase;
+export const supabase: SupabaseClient =
+  globalThis.__sb__ ??
+  createClient(url, anon, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+    realtime: { params: { eventsPerSecond: 5 } },
+  })
+
+if (process.env.NODE_ENV !== 'production') {
+  globalThis.__sb__ = supabase
+}
+
+export default supabase
