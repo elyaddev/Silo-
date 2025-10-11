@@ -355,49 +355,66 @@ export default function ThreadClient({
           <MessageCard key={String(m.id)} msg={m} />
         ))}
         <div ref={bottomRef} />
-      </div>
-
-      {/* Composer */}
-      <div
-        ref={composerRef}
-        className="sticky bottom-0 z-10 border-t border-neutral-200 bg-white/95 backdrop-blur-sm p-4 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] max-w-4xl mx-auto"
+      </div>{/* Composer */}
+<div
+  ref={composerRef}
+  className="sticky bottom-0 z-10 border-t border-neutral-200 bg-transparent backdrop-blur-sm p-4 max-w-4xl mx-auto"
+>
+  {replyTarget && (
+    <div
+      className="mb-3 flex items-center justify-between rounded-2xl border border-[#FFD9B8] bg-[#FFF7EF] px-3 py-2 text-[14px] text-[#5C3B23]"
+      style={{ borderLeftWidth: 4, borderLeftColor: "var(--color-brand)" }}
+    >
+      <div className="truncate">{replyTarget.excerpt}</div>
+      <button
+        type="button"
+        onClick={() => setReplyTarget(null)}
+        className="ml-3 rounded-full px-2 text-[#7B3E00] hover:bg-[#FFEAD2] font-bold text-lg leading-none"
+        title="Cancel reply"
       >
-        {replyTarget && (
-          <div
-            className="mb-3 truncate rounded-2xl border border-[#FFD9B8] bg-[#FFF7EF] px-3 py-2 text-[14px] text-[#5C3B23]"
-            style={{ borderLeftWidth: 4, borderLeftColor: "var(--color-brand)" }}
-          >
-            {replyTarget.excerpt}
-          </div>
-        )}
-        <div className="flex gap-2">
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder={
-              replyTarget ? "Write a reply to this…" : "Write a reply…"
-            }
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="w-full rounded-3xl border border-neutral-300 px-5 py-3 text-neutral-900 placeholder-neutral-500 outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] shadow-sm transition-all"
+        ×
+      </button>
+    </div>
+  )}
 
-
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-          />
-          <button
-            onClick={send}
-            disabled={posting || isPending || !content.trim()}
-            className="rounded-full px-5 py-3 bg-[var(--color-brand)] text-white font-semibold disabled:opacity-50 hover:brightness-95"
-          >
-            {posting ? "Sending…" : "Reply"}
-          </button>
-        </div>
-      </div>
+  <div className="flex gap-2 items-center">
+    <input
+      ref={inputRef}
+      type="text"
+      placeholder={replyTarget ? "Write a reply to this…" : "Write a reply…"}
+      value={content}
+      onChange={(e) => setContent(e.target.value)}
+      className="w-full rounded-3xl border border-neutral-300 px-5 py-3 text-neutral-900 placeholder-neutral-500 outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] shadow-sm transition-all bg-white"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          void send();
+        }
+      }}
+    />
+    <button
+  onClick={send}
+  disabled={posting || isPending || !content.trim()}
+  className="rounded-3xl px-6 h-10 flex items-center justify-center bg-[var(--color-brand)] text-white font-medium disabled:opacity-50 hover:brightness-95 transition-all"
+  title="Send"
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth={2}
+    stroke="currentColor"
+    className="w-4.5 h-4.5"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M5 12h14M12 5l7 7-7 7"
+    />
+  </svg>
+</button>
+  </div>
+</div>
     </div>
   );
 }
