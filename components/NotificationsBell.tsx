@@ -14,8 +14,7 @@ type Notif = {
   room_id: string;
   data: {
     discussion_id?: string;
-    actor_label?: string; // "OP" or alias number as string (e.g. "1")
-    // excerpt?: string;   // we won’t render this anymore
+    actor_label?: string;
   } | null;
 };
 
@@ -34,7 +33,6 @@ export default function NotificationsBell() {
 
   async function ensureLoaded() {
     if (items !== null || loading) return;
-
 
     setLoading(true);
     const { data, error } = await supabase
@@ -63,7 +61,9 @@ export default function NotificationsBell() {
 
   async function markRead(id: string) {
     setItems((prev) =>
-      (prev ?? []).map((n) => (n.id === id ? { ...n, read_at: n.read_at ?? new Date().toISOString() } : n))
+      (prev ?? []).map((n) =>
+        n.id === id ? { ...n, read_at: n.read_at ?? new Date().toISOString() } : n
+      )
     );
     const { error } = await supabase
       .from("notifications")
@@ -74,7 +74,12 @@ export default function NotificationsBell() {
 
   async function markAllRead() {
     if (!items?.some((n) => !n.read_at)) return;
-    setItems((prev) => (prev ?? []).map((n) => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
+    setItems((prev) =>
+      (prev ?? []).map((n) => ({
+        ...n,
+        read_at: n.read_at ?? new Date().toISOString(),
+      }))
+    );
     const { error } = await supabase
       .from("notifications")
       .update({ read_at: new Date().toISOString() })
@@ -85,19 +90,20 @@ export default function NotificationsBell() {
   function describe(n: Notif): { title: string; href?: string } {
     const actor = n.data?.actor_label ?? "someone";
     const discussionId = n.data?.discussion_id;
-    let title = "Notification";
+
+    let title = "New activity";
     if (n.type === "reply_to_you") title = `${actor} replied to your message`;
-    else if (n.type === "reply_in_discussion") title = `${actor} posted in this discussion`;
+    else if (n.type === "reply_in_discussion")
+      title = `${actor} posted in a discussion you're part of`;
 
     const href =
       discussionId && n.room_id && n.message_id
-        ? `/rooms/${n.room_id}/d/${discussionId}#m-${n.message_id}`
+        ? `/rooms/${n.room_id}/d/${discussionId}#msg-${n.message_id}`
         : undefined;
 
     return { title, href };
   }
 
-  // relative time (just now / Xm / Xh / Xd)
   function timeAgo(iso: string) {
     const now = Date.now();
     const then = new Date(iso).getTime();
@@ -142,7 +148,9 @@ export default function NotificationsBell() {
       {open && (
         <div
           className="absolute right-0 z-30 mt-2 w-[24rem] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-[0_12px_30px_rgba(0,0,0,0.08)]"
-          onMouseEnter={() => closeTimer.current && window.clearTimeout(closeTimer.current)}
+          onMouseEnter={() =>
+            closeTimer.current && window.clearTimeout(closeTimer.current)
+          }
           onMouseLeave={scheduleClose}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
@@ -157,9 +165,15 @@ export default function NotificationsBell() {
           </div>
 
           <div className="max-h-[26rem] overflow-y-auto">
-            {loading && <div className="px-4 py-4 text-sm text-neutral-500">Loading…</div>}
+            {loading && (
+              <div className="px-4 py-4 text-sm text-neutral-500">
+                Loading…
+              </div>
+            )}
             {!loading && (!items || items.length === 0) && (
-              <div className="px-4 py-4 text-sm text-neutral-500">You’re all caught up.</div>
+              <div className="px-4 py-4 text-sm text-neutral-500">
+                You’re all caught up.
+              </div>
             )}
 
             {!loading &&
@@ -175,20 +189,33 @@ export default function NotificationsBell() {
                     }`}
                     onClick={async () => {
                       await markRead(n.id);
-                      if (href) router.push(href);
+                      if (href) {
+                        router.push(href);
+setTimeout(() => {
+  const el = document.getElementById(`msg-${n.message_id}`);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}, 800);
+                      }
                       setOpen(false);
                     }}
                   >
                     <div className="flex items-start gap-2">
                       <span
                         className={`mt-1 inline-block h-2.5 w-2.5 rounded-full ${
-                          unread ? "bg-[var(--color-brand)]" : "bg-neutral-300"
+                          unread
+                            ? "bg-[var(--color-brand)]"
+                            : "bg-neutral-300"
                         }`}
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="text-[14px] font-medium text-neutral-900 line-clamp-1">{title}</div>
-                        {/* removed excerpt/subtitle line */}
-                        <div className="mt-1 text-[11px] text-neutral-500">{timeAgo(n.created_at)}</div>
+                        <div className="text-[14px] font-medium text-neutral-900 line-clamp-1">
+                          {title}
+                        </div>
+                        <div className="mt-1 text-[11px] text-neutral-500">
+                          {timeAgo(n.created_at)}
+                        </div>
                       </div>
                     </div>
                   </button>
