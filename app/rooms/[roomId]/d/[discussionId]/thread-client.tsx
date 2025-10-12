@@ -8,6 +8,7 @@ import {
   useTransition,
   memo,
 } from "react";
+import { useRouter } from "next/navigation";
 import supabase from "@/lib/supabaseClient";
 import { logActivity } from "@/lib/logActivity";
 import ClientTime from "@/components/ClientTime";
@@ -52,12 +53,18 @@ export default function ThreadClient({
   roomId: string;
   discussion: Discussion;
 }) {
+  const router = useRouter();
+
   const [replies, setReplies] = useState<Reply[]>([]);
   const [content, setContent] = useState("");
   const [posting, setPosting] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Menus per-message
+  const [menuForMsgId, setMenuForMsgId] = useState<number | null>(null);      // alias chip menu
+  const [moreForMsgId, setMoreForMsgId] = useState<number | null>(null);      // three-dots menu
 
   const composerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -134,6 +141,65 @@ export default function ThreadClient({
     setTimeout(() => inputRef.current?.focus(), 80);
   }, []);
 
+  /** ─────────── Request chat helper ─────────── */
+  const requestChat = useCallback(
+    async (targetUserId: string | null) => {
+      if (!targetUserId) {
+        alert("Cannot request chat: missing user.");
+        return;
+      }
+      if (currentUserId && targetUserId === currentUserId) {
+        alert("That’s you 🙂");
+        return;
+      }
+      const { data, error } = await supabase.rpc("request_dm", {
+        target_user_id: targetUserId,
+      });
+      if (error) {
+        console.error(error);
+        alert(error.message);
+        return;
+      }
+      const status = (data as any)?.status as string | undefined;
+      const conv = (data as any)?.conversation_id as string | undefined;
+
+      if (status === "accepted" && conv) {
+        router.push(`/dm/${conv}`);
+      } else {
+        alert("Chat request sent.");
+      }
+    },
+    [currentUserId, router]
+  );
+
+  /** ─────────── Report user helper ─────────── */
+  const reportUser = useCallback(
+    async (targetUserId: string | null, ctx: Record<string, any>) => {
+      if (!targetUserId) {
+        alert("Missing user to report.");
+        return;
+      }
+      try {
+        const { error } = await supabase.rpc("report_user", {
+          p_target_user_id: targetUserId,
+          p_reason: "abuse",   // simple default; can add selector later
+          p_details: "",
+          p_context: ctx,
+        });
+        if (error) {
+          console.error(error);
+          alert(error.message);
+          return;
+        }
+        alert("Report submitted. Thank you.");
+      } catch (err: any) {
+        console.error(err);
+        alert("Failed to submit report.");
+      }
+    },
+    []
+  );
+
   /** ─────────── Send reply ─────────── */
   const send = useCallback(async () => {
     const text = content.trim();
@@ -153,7 +219,7 @@ export default function ThreadClient({
       id: -1,
       content: text,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(), // ✅ added
+      updated_at: new Date().toISOString(),
       profile_id: session.user.id,
       alias_label: null,
       is_deleted: false,
@@ -235,10 +301,7 @@ export default function ThreadClient({
                 el.classList.add("ring-2", "ring-[var(--color-brand)]");
                 setTimeout(
                   () =>
-                    el.classList.remove(
-                      "ring-2",
-                      "ring-[var(--color-brand)]"
-                    ),
+                    el.classList.remove("ring-2", "ring-[var(--color-brand)]"),
                   1200
                 );
               }
@@ -261,21 +324,95 @@ export default function ThreadClient({
           </div>
         ) : (
           <>
-            <div className="mb-2">
-              <span
-                className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] ${
-                  msg.alias_label === "OP"
-                    ? "bg-[#FFF3E7] text-[#7B3E00] border-[#FFD9B8]"
-                    : "bg-neutral-50 text-neutral-700 border-neutral-300"
-                }`}
-              >
-                {msg.alias_label === "OP"
-                  ? "OP"
-                  : msg.alias_label
-                  ? `${msg.alias_label}`
-                  : "anonymous"}
-              </span>
+            <div className="mb-2 flex items-start justify-between gap-3">
+              {/* Alias chip -> clickable popover for Request chat */}
+              <div className="relative inline-block">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!msg.profile_id || msg.profile_id === currentUserId) return;
+                    setMenuForMsgId((open) => (open === msg.id ? null : (msg.id as number)));
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      setMenuForMsgId((open) => (open === msg.id ? null : open));
+                    }, 150);
+                  }}
+                  disabled={!msg.profile_id || msg.profile_id === currentUserId}
+                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] transition ${
+                    msg.alias_label === "OP"
+                      ? "bg-[#FFF3E7] text-[#7B3E00] border-[#FFD9B8]"
+                      : "bg-neutral-50 text-neutral-700 border-neutral-300"
+                  } ${
+                    !msg.profile_id || msg.profile_id === currentUserId
+                      ? "opacity-60 cursor-default"
+                      : "cursor-pointer hover:brightness-95"
+                  }`}
+                  title={
+                    !msg.profile_id || msg.profile_id === currentUserId
+                      ? "You can't DM yourself"
+                      : "Click to request a chat"
+                  }
+                >
+                  {msg.alias_label === "OP"
+                    ? "OP"
+                    : msg.alias_label
+                    ? `${msg.alias_label}`
+                    : "anonymous"}
+                </button>
+
+                {menuForMsgId === msg.id && (
+                  <div className="absolute z-20 mt-2 w-44 rounded-xl border border-neutral-200 bg-white shadow-lg overflow-hidden">
+                    <button
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                      onClick={async () => {
+                        setMenuForMsgId(null);
+                        await requestChat(msg.profile_id);
+                      }}
+                    >
+                      Request chat
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Three-dots overflow on the right */}
+              <div className="relative inline-block ml-auto">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMoreForMsgId((open) => (open === msg.id ? null : (msg.id as number)))
+                  }
+                  onBlur={() => {
+                    setTimeout(() => {
+                      setMoreForMsgId((open) => (open === msg.id ? null : open));
+                    }, 150);
+                  }}
+                  className="rounded-full px-2 py-1 text-[12px] border border-neutral-300 hover:bg-neutral-50"
+                  title="More"
+                >
+                  …
+                </button>
+                {moreForMsgId === msg.id && (
+                  <div className="absolute right-0 mt-2 w-44 rounded-xl border border-neutral-200 bg-white shadow-lg overflow-hidden z-20">
+                    <button
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+                      onClick={async () => {
+                        setMoreForMsgId(null);
+                        await reportUser(msg.profile_id, {
+                          kind: "discussion_message",
+                          discussion_id: msg.discussion_id,
+                          message_id: msg.id,
+                        });
+                      }}
+                    >
+                      Report user
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
+
             <p className="whitespace-pre-wrap text-[16px] leading-relaxed text-neutral-900">
               {msg.content}
             </p>
@@ -297,12 +434,26 @@ export default function ThreadClient({
                 {mine && (
                   <button
                     className="rounded-full px-3 py-1 text-[12px] border border-red-300 text-red-600 hover:bg-red-50"
-                    onClick={() =>
-                      supabase
+                    onClick={async () => {
+                      // optimistic: flip to deleted immediately
+                      const prev = msg;
+                      setReplies((list) =>
+                        list.map((r) => (r.id === msg.id ? { ...r, is_deleted: true } : r))
+                      );
+
+                      const { error } = await supabase
                         .from("messages")
-                        .update({ is_deleted: true })
-                        .eq("id", msg.id)
-                    }
+                        .update({ is_deleted: true, updated_at: new Date().toISOString() })
+                        .eq("id", msg.id);
+
+                      if (error) {
+                        console.error("Delete failed:", error);
+                        // revert optimistic change
+                        setReplies((list) => list.map((r) => (r.id === prev.id ? prev : r)));
+                        alert(error.message);
+                      }
+                      // success path: realtime UPDATE will also arrive
+                    }}
                   >
                     Delete
                   </button>
@@ -343,10 +494,7 @@ export default function ThreadClient({
         {replyTarget && (
           <div
             className="mb-3 flex items-center justify-between rounded-2xl border border-[#FFD9B8] bg-[#FFF7EF] px-3 py-2 text-[14px] text-[#5C3B23]"
-            style={{
-              borderLeftWidth: 4,
-              borderLeftColor: "var(--color-brand)",
-            }}
+            style={{ borderLeftWidth: 4, borderLeftColor: "var(--color-brand)" }}
           >
             <div className="truncate">{replyTarget.excerpt}</div>
             <button
@@ -364,9 +512,7 @@ export default function ThreadClient({
           <input
             ref={inputRef}
             type="text"
-            placeholder={
-              replyTarget ? "Write a reply to this…" : "Write a reply…"
-            }
+            placeholder={replyTarget ? "Write a reply to this…" : "Write a reply…"}
             value={content}
             onChange={(e) => setContent(e.target.value)}
             className="w-full rounded-3xl border border-neutral-300 px-5 py-3 text-neutral-900 placeholder-neutral-500 outline-none focus:ring-2 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] shadow-sm transition-all bg-white"

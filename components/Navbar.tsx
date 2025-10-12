@@ -1,12 +1,9 @@
 // This file is copied and adapted from the original repository.
 // Changes include:
-//  * Sign-up links now point to `/login?mode=signup` instead of `/signup` so
-//    pressing “Sign up” shows the account creation form instead of a 404.
-//  * When a user is signed in the “Account” link has been replaced with a
-//    dropdown menu.  Clicking your username toggles a menu containing your
-//    username and a link to your activity page.  This prepares the UI for
-//    additional menu items in the future.
-//  * Notifications bell added (desktop + mobile) which listens via Supabase Realtime.
+//  * Sign-up links now point to `/login?mode=signup` instead of `/signup`.
+//  * When a user is signed in the “Account” link is a dropdown.
+//  * Notifications bell added (desktop + mobile).
+//  * NEW: Direct Messages links added to navbar (desktop + mobile).
 
 "use client";
 
@@ -17,16 +14,14 @@ import { Menu } from "lucide-react";
 import SearchBar from "@/components/SearchBar";
 import supabase from "@/lib/supabaseClient";
 import Logo from "@/components/Logo";
-import NotificationsBell from "@/components/NotificationsBell"; // 👈 NEW
+import NotificationsBell from "@/components/NotificationsBell"; // 👈
 
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const [openMobile, setOpenMobile] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
-  // We no longer display usernames; aliasing is per‑discussion.  This
-  // component simply shows "Account" when signed in.
-  const [username] = useState<string | null>(null);
+  const [username] = useState<string | null>(null); // not shown; aliasing is per-discussion
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -44,11 +39,8 @@ export default function Navbar() {
 
   useEffect(() => {
     (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       setSignedIn(!!session?.user);
-      // We intentionally do not fetch or display usernames here.
     })();
   }, [pathname]);
 
@@ -86,10 +78,23 @@ export default function Navbar() {
           ))}
         </nav>
 
-        {/* RIGHT: Search + Notifications + Auth (desktop) */}
+        {/* RIGHT: Search + DMs + Notifications + Auth (desktop) */}
         <div className="hidden md:flex items-center gap-3">
           <SearchBar />
-          {signedIn && <NotificationsBell />}{/* 👈 NEW */}
+
+          {/* NEW: Direct Messages quick link (only when signed in) */}
+          {signedIn && (
+            <Link
+              href="/dm"
+              className="rounded-lg border px-3 py-1.5 text-sm text-slate-700 hover:bg-neutral-50"
+              title="Direct Messages"
+            >
+              DMs
+            </Link>
+          )}
+
+          {signedIn && <NotificationsBell />}
+
           {signedIn ? (
             <div className="flex items-center gap-2">
               {/* Dropdown for user menu */}
@@ -109,6 +114,22 @@ export default function Navbar() {
                     >
                       My Activity
                     </Link>
+                    {/* If you ever want DMs in the dropdown as well, uncomment:
+                    <Link
+                      href="/dm"
+                      className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Direct Messages
+                    </Link>
+                    <Link
+                      href="/dm/requests"
+                      className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Chat Requests
+                    </Link>
+                    */}
                   </div>
                 )}
               </div>
@@ -154,7 +175,7 @@ export default function Navbar() {
             {/* Search + Notifications (mobile) */}
             <div className="flex items-center justify-between">
               <SearchBar />
-              {signedIn && <NotificationsBell />}{/* 👈 NEW */}
+              {signedIn && <NotificationsBell />}
             </div>
 
             {/* Links */}
@@ -172,6 +193,26 @@ export default function Navbar() {
                   {l.label}
                 </Link>
               ))}
+
+              {/* NEW: DMs + Requests in mobile drawer (only when signed in) */}
+              {signedIn && (
+                <>
+                  <Link
+                    href="/dm"
+                    onClick={() => setOpenMobile(false)}
+                    className="rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-neutral-50 text-slate-700"
+                  >
+                    Direct Messages
+                  </Link>
+                  <Link
+                    href="/dm/requests"
+                    onClick={() => setOpenMobile(false)}
+                    className="rounded-lg px-3 py-2 text-sm font-medium transition hover:bg-neutral-50 text-slate-700"
+                  >
+                    Chat Requests
+                  </Link>
+                </>
+              )}
             </nav>
 
             {/* Auth actions */}
