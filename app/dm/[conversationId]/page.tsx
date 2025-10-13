@@ -31,6 +31,27 @@ export default function DMConversationPage() {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // --- helpers --------------------------------------------------------------
+
+  async function refreshTotalUnread() {
+    const { data, error } = await supabase.rpc("total_dm_unread");
+    const total = !error && typeof data === "number" ? data : 0;
+    // Notify Navbar instantly
+    window.dispatchEvent(new CustomEvent("dm:unread:update", { detail: { count: total } }));
+  }
+
+  async function markReadNow() {
+    if (!conversationId || !me) return;
+    await supabase
+      .from("direct_members")
+      .update({ last_read_at: new Date().toISOString() })
+      .eq("conversation_id", conversationId)
+      .eq("user_id", me);
+    await refreshTotalUnread();
+  }
+
+  // -------------------------------------------------------------------------
+
   // 1) get current user
   useEffect(() => {
     (async () => {
@@ -39,15 +60,16 @@ export default function DMConversationPage() {
     })();
   }, []);
 
-  // 2) guard: ensure I’m a member; set last_read_at baseline
+  // 2) guard: ensure I’m a member; set last_read_at baseline and refresh badge
   useEffect(() => {
     if (!conversationId) return;
     (async () => {
+      const uid = (await supabase.auth.getUser()).data.user?.id ?? "";
       const { data, error } = await supabase
         .from("direct_members")
         .select("user_id, conversation_id")
         .eq("conversation_id", conversationId)
-        .eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "")
+        .eq("user_id", uid)
         .limit(1);
 
       if (error) {
@@ -59,14 +81,23 @@ export default function DMConversationPage() {
         router.replace("/dm/requests");
         return;
       }
-      // mark read baseline
+      // mark read immediately and refresh the total badge
       await supabase
         .from("direct_members")
         .update({ last_read_at: new Date().toISOString() })
         .eq("conversation_id", conversationId)
-        .eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "");
+        .eq("user_id", uid);
+
+      await refreshTotalUnread();
     })();
   }, [conversationId, router]);
+
+  // Also refresh total on window focus (user returns to tab)
+  useEffect(() => {
+    const onFocus = () => { void markReadNow(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [conversationId, me]);
 
   // 3) initial load
   useEffect(() => {
@@ -97,17 +128,15 @@ export default function DMConversationPage() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "direct_messages", filter: `conversation_id=eq.${conversationId}` },
-        (payload) => {
+        async (payload) => {
           const row = payload.new as DM;
           startTransition(() => setMsgs((prev) => [...prev, row]));
-          // keep read marker fresh if message is mine
+
+          // if it's my own message, we already consider it read: update marker + total
           if (row.sender_id === me) {
-            void supabase
-              .from("direct_members")
-              .update({ last_read_at: new Date().toISOString() })
-              .eq("conversation_id", conversationId)
-              .eq("user_id", me!);
+            await markReadNow();
           }
+
           // auto scroll to bottom for new stuff
           setTimeout(
             () => listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" }),
@@ -119,7 +148,7 @@ export default function DMConversationPage() {
     return () => void supabase.removeChannel(ch);
   }, [conversationId, me]);
 
-  // 5) send a message (RPC uses RLS)
+  // 5) send a message
   const send = useCallback(async () => {
     const value = text.trim();
     if (!value || posting) return;
@@ -137,7 +166,7 @@ export default function DMConversationPage() {
     };
     setMsgs((prev) => [...prev, temp]);
 
-    const { data, error } = await supabase.rpc("send_dm", {
+    const { error } = await supabase.rpc("send_dm", {
       p_conversation_id: conversationId,
       p_content: value,
       p_reply_to_message_id: null,
@@ -152,16 +181,11 @@ export default function DMConversationPage() {
       return;
     }
 
-    // realtime will push the real row; keep optimistic until then
     setText("");
     inputRef.current?.focus();
 
-    // update my read marker
-    await supabase
-      .from("direct_members")
-      .update({ last_read_at: new Date().toISOString() })
-      .eq("conversation_id", conversationId)
-      .eq("user_id", me!);
+    // mark read and refresh unread total immediately (keeps badge correct)
+    await markReadNow();
   }, [conversationId, me, posting, text]);
 
   // 6) report helper
@@ -238,7 +262,6 @@ export default function DMConversationPage() {
                         }`}
                       >
                         <ClientTime iso={m.created_at} />
-
                         {/* three-dots menu on non-own messages */}
                         {!mine && (
                           <div className="relative inline-block">

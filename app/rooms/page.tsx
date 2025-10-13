@@ -1,93 +1,92 @@
 // app/rooms/page.tsx
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 
-type Room = {
+type RoomRow = {
   id: string;
   name: string;
-  is_private: boolean | null;
   created_at: string;
 };
 
-export default function RoomsPage() {
-  const supabase = createClientComponentClient();
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [loading, setLoading] = useState(true);
+export default async function RoomsIndexPage() {
+  const supabase = createServerComponentClient({ cookies });
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const { data, error } = await supabase
-        .from("rooms")
-        .select("*")
-        .order("created_at", { ascending: true });
+  const { data: rooms, error } = await supabase
+    .from("rooms")
+    .select("id, name, created_at")
+    .order("created_at", { ascending: false });
 
-      if (!mounted) return;
-      if (error) {
-        console.error(error);
-        setRooms([]);
-      } else {
-        setRooms(data ?? []);
-      }
-      setLoading(false);
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [supabase]);
+  if (error) {
+    return (
+      <div className="mx-auto max-w-5xl px-6 py-14">
+        <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-neutral-900">
+          Chat Rooms
+        </h1>
+        <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Failed to load rooms: {error.message}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <main className="mx-auto max-w-4xl px-4 md:px-6 py-12 md:py-14">
-      {/* Header — mirrors homepage tone */}
-      <header className="text-center space-y-3 md:space-y-4">
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
-          <span className="text-slate-800">Chat</span>{" "}
-          <span className="text-orange-500">Rooms</span>
+    <div className="mx-auto max-w-5xl px-6 py-12">
+      {/* Header */}
+      <div className="text-center mb-8 md:mb-10">
+        <h1 className="text-[34px] md:text-[44px] font-bold tracking-tight">
+          <span className="text-neutral-900">Chat </span>
+          <span className="text-[var(--color-brand)]">Rooms</span>
         </h1>
-        <p className="mx-auto max-w-2xl text-slate-600">
+        <p className="mt-2 text-neutral-600 text-[15px] md:text-base">
           Find your community. Discuss topics freely and safely.
         </p>
-      </header>
+      </div>
 
       {/* List */}
-      <section className="mt-10 grid gap-4">
-        {loading && (
-          <div className="text-center text-slate-500 py-10">Loading rooms…</div>
-        )}
-
-        {!loading && rooms.length === 0 && (
-          <div className="text-center text-slate-500 py-10">
-            No rooms yet.
-          </div>
-        )}
-
-        {!loading &&
-          rooms.map((r) => (
-            <div
-              key={r.id}
-              className="card group flex items-center justify-between gap-4 px-6 py-5 shadow-sm hover:shadow-md transition"
+      <ul className="grid gap-4 md:gap-5">
+        {(rooms ?? []).map((r) => (
+          <li key={r.id}>
+            <Link
+              href={`/rooms/${r.id}`}
+              className={[
+                "group block rounded-3xl border shadow-sm",
+                "border-[#FFE0C8] bg-white/90",
+                "px-5 py-5 md:px-7 md:py-6",
+                "transition-all duration-200 ease-out",
+                "hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-lg",
+                "hover:bg-[#FFF8F2] hover:border-[#FFCFAE]",
+                "focus:outline-none focus:ring-2 focus:ring-[#FFB98A]/60",
+              ].join(" ")}
             >
-              <div>
-                <h3 className="text-lg md:text-xl font-semibold text-slate-800">
+              <div className="flex items-center justify-between gap-4">
+                <h2 className="truncate text-xl md:text-2xl font-medium tracking-tight text-neutral-900">
                   {r.name}
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  {r.is_private ? "Private" : "Public"} room
-                </p>
-              </div>
+                </h2>
 
-              <Link
-                href={`/rooms/${r.id}`}
-                className="btn btn-primary rounded-full shadow-md hover:shadow-lg"
-              >
-                Enter
-              </Link>
-            </div>
-          ))}
-      </section>
-    </main>
+                <span
+                  className={[
+                    "inline-flex items-center justify-center rounded-full px-4 md:px-5 h-10 md:h-11",
+                    "text-sm md:text-[15px] font-medium",
+                    "bg-[var(--color-brand)] text-white",
+                    "transition-all duration-200 ease-out",
+                    "group-hover:brightness-95 group-active:scale-95",
+                    "shadow-[0_6px_18px_rgba(255,140,0,0.25)]",
+                  ].join(" ")}
+                >
+                  Enter
+                </span>
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ul>
+
+      {(rooms ?? []).length === 0 && (
+        <div className="mt-8 rounded-3xl border border-[#FFE0C8] bg-[#FFF6EE] p-6 text-center text-neutral-700">
+          No rooms yet. Check back soon!
+        </div>
+      )}
+    </div>
   );
 }

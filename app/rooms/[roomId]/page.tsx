@@ -54,7 +54,7 @@ export default async function RoomPage({
 
       {/* Discussions */}
       <section aria-labelledby="discussions" className="mt-6">
-        <h2 id="discussions" className="text-2xl font-semibold text-slate-900 mb-4">
+        <h2 id="discussions" className="text-3xl font-semibold text-slate-900 mb-4">
           Discussions
         </h2>
 

@@ -3,9 +3,9 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main className="mx-auto max-w-5xl px-4 md:px-6 py-14">
+    <main className="mx-auto max-w-6xl px-8 md:px-10 py-20">
       {/* HERO SECTION */}
-      <section className="text-center space-y-5">
+      <section className="text-center space-y-8">
         <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-800">
           Feel <span className="text-orange-500">better</span> together
         </h1>
@@ -13,16 +13,16 @@ export default function HomePage() {
           A calm space to share, listen, and grow — safely.
         </p>
 
-        <div className="flex flex-wrap justify-center gap-4 pt-4">
+        <div className="flex flex-wrap justify-center gap-7 pt-7">
           <Link
             href="/rooms"
-            className="rounded-full bg-orange-500 px-6 py-3 font-semibold text-white shadow-md transition hover:bg-orange-600 hover:shadow-lg"
+            className="rounded-full bg-orange-500 px-9 py-5 font-semibold text-white shadow-md transition hover:bg-orange-600 hover:shadow-lg"
           >
             Explore Rooms
           </Link>
           <Link
             href="/guidelines"
-            className="rounded-full border border-orange-200 bg-white px-6 py-3 font-semibold text-slate-700 hover:bg-orange-50 transition"
+            className="rounded-full border border-orange-200 bg-white px-9 py-5 font-semibold text-slate-700 hover:bg-orange-50 transition"
           >
             Community Rules
           </Link>
@@ -30,7 +30,7 @@ export default function HomePage() {
       </section>
 
       {/* FEATURE ROW */}
-      <section className="mt-16 grid gap-6 sm:grid-cols-3">
+      <section className="mt-24 grid gap-10 sm:grid-cols-3">
         <FeatureCard
           title="Anon Handles"
           text="Be heard without being seen."
@@ -49,10 +49,10 @@ export default function HomePage() {
       </section>
 
       {/* CTA */}
-      <section className="mt-16 text-center">
+      <section className="mt-24 text-center">
         <Link
           href="/rooms"
-          className="rounded-full bg-orange-500 px-8 py-4 text-lg font-semibold text-white shadow-md transition hover:bg-orange-600 hover:shadow-lg"
+          className="rounded-full bg-orange-500 px-12 py-5 text-lg font-semibold text-white shadow-md transition hover:bg-orange-600 hover:shadow-lg"
         >
           Find Your Room
         </Link>
@@ -79,10 +79,10 @@ function FeatureCard({
 
   return (
     <div
-      className={`rounded-2xl border ${palette} p-6 text-left shadow-sm hover:shadow-md transition`}
+      className={`rounded-2xl border ${palette} p-10 text-left shadow-sm hover:shadow-md transition`}
     >
-      <h3 className="text-lg font-bold mb-1">{title}</h3>
-      <p className="text-slate-600">{text}</p>
+      <h3 className="text-lg font-semibold mb-2">{title}</h3>
+      <p className="text-slate-600 leading-relaxed">{text}</p>
     </div>
   );
 }

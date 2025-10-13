@@ -12,28 +12,28 @@ type Noti = {
     | "reply_in_discussion"
     | "dm_request"
     | "dm_request_accepted"
-    | "dm_received"
-    | string;
+    | string; // NOTE: dm_received removed from union
   user_id: string;
   actor_id: string;
-  message_id: number;                // for reply_* and dm_received
-  room_id: string;                    // discussion routes
-  discussion_id: string | null;      // discussion routes
+  message_id: number;
+  room_id: string;
+  discussion_id: string | null;
   data: {
-    actor_label?: string | null;     // for reply_* labels
-    request_id?: string | null;      // for dm_request / accepted
-    conversation_id?: string | null; // for dm_* deep links
+    actor_label?: string | null;
+    request_id?: string | null;
+    conversation_id?: string | null;
+    // dm_message_id?: number; // not used here anymore
   } | null;
   created_at: string;
   read_at: string | null;
 };
 
+// DM messages are excluded here on purpose.
 const ALLOWED: Array<Noti["type"]> = [
   "reply_to_you",
   "reply_in_discussion",
   "dm_request",
   "dm_request_accepted",
-  "dm_received",
 ];
 
 export default function NotificationsBell() {
@@ -47,7 +47,9 @@ export default function NotificationsBell() {
   // --- load uid
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       setUid(session?.user?.id ?? null);
     })();
   }, []);
@@ -71,8 +73,6 @@ export default function NotificationsBell() {
         return `New chat request`;
       case "dm_request_accepted":
         return `Chat request accepted`;
-      case "dm_received":
-        return `New message`;
       default:
         return "Notification";
     }
@@ -105,7 +105,7 @@ export default function NotificationsBell() {
     void refreshUnread();
   }, [uid]);
 
-  // --- realtime inserts for my user
+  // --- realtime inserts for my user (DM messages are ignored by ALLOWED)
   useEffect(() => {
     if (!uid) return;
     const channel = supabase
@@ -120,7 +120,7 @@ export default function NotificationsBell() {
         },
         (payload) => {
           const row = payload.new as Noti;
-          if (!ALLOWED.includes(row.type)) return;
+          if (!ALLOWED.includes(row.type)) return; // ignores dm_received
           setNotis((prev) => [row, ...prev].slice(0, 50));
           setUnreadCount((c) => c + 1);
         }
@@ -132,7 +132,9 @@ export default function NotificationsBell() {
   // --- mark all read
   async function markAllRead() {
     if (!uid) return;
-    const toMark = notis.filter((n) => ALLOWED.includes(n.type) && !n.read_at).map((n) => n.id);
+    const toMark = notis
+      .filter((n) => ALLOWED.includes(n.type) && !n.read_at)
+      .map((n) => n.id);
     if (toMark.length === 0) {
       setOpen(false);
       return;
@@ -153,13 +155,15 @@ export default function NotificationsBell() {
     }
   }
 
-  // --- click handler with deep-links
+  // --- click handler with deep-links (DM message case removed)
   async function handleClick(n: Noti) {
     switch (n.type) {
       case "reply_to_you":
       case "reply_in_discussion":
         if (n.room_id && n.discussion_id && n.message_id) {
-          router.push(`/rooms/${n.room_id}/d/${n.discussion_id}#msg-${n.message_id}`);
+          router.push(
+            `/rooms/${n.room_id}/d/${n.discussion_id}#msg-${n.message_id}`
+          );
         }
         break;
       case "dm_request":
@@ -170,13 +174,8 @@ export default function NotificationsBell() {
         if (conv) router.push(`/dm/${conv}`);
         break;
       }
-      case "dm_received": {
-  const conv = n.data?.conversation_id;
-  const dmMsgId = (n.data as any)?.dm_message_id; // <— new
-  if (conv && dmMsgId) router.push(`/dm/${conv}#msg-${dmMsgId}`);
-  else if (conv) router.push(`/dm/${conv}`);
-  break;
-}
+      default:
+        break;
     }
 
     // mark read after navigating
@@ -186,7 +185,11 @@ export default function NotificationsBell() {
         .update({ read_at: new Date().toISOString() })
         .eq("id", n.id);
       if (!error) {
-        setNotis((prev) => prev.map((x) => (x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x)));
+        setNotis((prev) =>
+          prev.map((x) =>
+            x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x
+          )
+        );
         setUnreadCount((c) => Math.max(0, c - 1));
       }
     }
@@ -194,7 +197,10 @@ export default function NotificationsBell() {
     setOpen(false);
   }
 
-  const filtered = useMemo(() => notis.filter((n) => ALLOWED.includes(n.type)), [notis]);
+  const filtered = useMemo(
+    () => notis.filter((n) => ALLOWED.includes(n.type)),
+    [notis]
+  );
 
   return (
     <div className="relative">
@@ -211,10 +217,19 @@ export default function NotificationsBell() {
         className="relative rounded-full p-2 hover:bg-neutral-100 transition"
       >
         {/* icon */}
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6"
-          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-          <path strokeLinecap="round" strokeLinejoin="round"
-            d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9a6 6 0 10-12 0v.75a8.967 8.967 0 01-2.311 6.022c1.76.64 3.59 1.085 5.455 1.31m5.713 0a24.255 24.255 0 01-5.713 0m5.713 0a3 3 0 11-5.713 0" />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={1.75}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9a6 6 0 10-12 0v.75a8.967 8.967 0 01-2.311 6.022c1.76.64 3.59 1.085 5.455 1.31m5.713 0a24.255 24.255 0 01-5.713 0m5.713 0a3 3 0 11-5.713 0"
+          />
         </svg>
 
         {/* badge */}
@@ -239,7 +254,9 @@ export default function NotificationsBell() {
           </div>
 
           {filtered.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-neutral-600">No notifications yet.</div>
+            <div className="px-4 py-6 text-sm text-neutral-600">
+              No notifications yet.
+            </div>
           ) : (
             <ul className="max-h-96 overflow-auto divide-y divide-neutral-200">
               {filtered.map((n) => (
