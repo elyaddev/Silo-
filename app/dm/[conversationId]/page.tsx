@@ -1,9 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 import supabase from "@/lib/supabaseClient";
 import ClientTime from "@/components/ClientTime";
+import { createPortal } from "react-dom";
 
 type DM = {
   id: number;
@@ -15,6 +23,66 @@ type DM = {
   is_deleted: boolean;
 };
 
+/* ────────────────────────── Portal Menu (into list container) ────────────────────────── */
+const MENU_W = 176; // Tailwind w-44
+
+function PortalMenu({
+  open,
+  top,
+  left,
+  onClose,
+  onReport,
+  container,
+}: {
+  open: boolean;
+  top: number;
+  left: number;
+  onClose: () => void;
+  onReport: () => void;
+  container: HTMLElement | null;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: MouseEvent) => {
+      const el = menuRef.current;
+      if (!el) return;
+      if (e.target instanceof Node && el.contains(e.target)) return;
+      onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDocDown, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  if (!open || !container) return null;
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      style={{ position: "absolute", top, left, width: MENU_W }}
+      className="z-[10000] rounded-xl border border-neutral-200 bg-white shadow-lg overflow-hidden"
+    >
+      <button
+        className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
+        onClick={onReport}
+      >
+        Report user
+      </button>
+    </div>,
+    container
+  );
+}
+
+/* ───────────────────────── Conversation Page ───────────────────────── */
+
 export default function DMConversationPage() {
   const router = useRouter();
   const { conversationId } = useParams<{ conversationId: string }>();
@@ -25,8 +93,9 @@ export default function DMConversationPage() {
   const [isPending, startTransition] = useTransition();
   const [posting, setPosting] = useState(false);
 
-  // per-message overflow menu (three dots)
-  const [moreForMsgId, setMoreForMsgId] = useState<number | null>(null);
+  // Menu state (portaled to list container)
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -36,7 +105,6 @@ export default function DMConversationPage() {
   async function refreshTotalUnread() {
     const { data, error } = await supabase.rpc("total_dm_unread");
     const total = !error && typeof data === "number" ? data : 0;
-    // Notify Navbar instantly
     window.dispatchEvent(new CustomEvent("dm:unread:update", { detail: { count: total } }));
   }
 
@@ -50,8 +118,6 @@ export default function DMConversationPage() {
     await refreshTotalUnread();
   }
 
-  // -------------------------------------------------------------------------
-
   // 1) get current user
   useEffect(() => {
     (async () => {
@@ -60,7 +126,7 @@ export default function DMConversationPage() {
     })();
   }, []);
 
-  // 2) guard: ensure I’m a member; set last_read_at baseline and refresh badge
+  // 2) membership guard + read marker
   useEffect(() => {
     if (!conversationId) return;
     (async () => {
@@ -81,7 +147,6 @@ export default function DMConversationPage() {
         router.replace("/dm/requests");
         return;
       }
-      // mark read immediately and refresh the total badge
       await supabase
         .from("direct_members")
         .update({ last_read_at: new Date().toISOString() })
@@ -91,13 +156,6 @@ export default function DMConversationPage() {
       await refreshTotalUnread();
     })();
   }, [conversationId, router]);
-
-  // Also refresh total on window focus (user returns to tab)
-  useEffect(() => {
-    const onFocus = () => { void markReadNow(); };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [conversationId, me]);
 
   // 3) initial load
   useEffect(() => {
@@ -115,12 +173,11 @@ export default function DMConversationPage() {
         return;
       }
       setMsgs((data ?? []) as DM[]);
-      // scroll to bottom
-      setTimeout(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }), 50);
+      setTimeout(() => listRef.current?.scrollTo({ top: listRef.current!.scrollHeight }), 50);
     })();
   }, [conversationId]);
 
-  // 4) realtime inserts for this conversation
+  // 4) realtime inserts
   useEffect(() => {
     if (!conversationId) return;
     const ch = supabase
@@ -131,30 +188,20 @@ export default function DMConversationPage() {
         async (payload) => {
           const row = payload.new as DM;
           startTransition(() => setMsgs((prev) => [...prev, row]));
-
-          // if it's my own message, we already consider it read: update marker + total
-          if (row.sender_id === me) {
-            await markReadNow();
-          }
-
-          // auto scroll to bottom for new stuff
-          setTimeout(
-            () => listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" }),
-            50
-          );
+          if (row.sender_id === me) await markReadNow();
+          setTimeout(() => listRef.current?.scrollTo({ top: listRef.current!.scrollHeight, behavior: "smooth" }), 50);
         }
       )
       .subscribe();
     return () => void supabase.removeChannel(ch);
   }, [conversationId, me]);
 
-  // 5) send a message
+  // 5) send
   const send = useCallback(async () => {
     const value = text.trim();
     if (!value || posting) return;
     setPosting(true);
 
-    // optimistic bubble
     const temp: DM = {
       id: -Date.now(),
       conversation_id: conversationId,
@@ -175,7 +222,6 @@ export default function DMConversationPage() {
     setPosting(false);
 
     if (error) {
-      // revert optimistic
       setMsgs((prev) => prev.filter((m) => m.id !== temp.id));
       alert(error.message);
       return;
@@ -183,8 +229,6 @@ export default function DMConversationPage() {
 
     setText("");
     inputRef.current?.focus();
-
-    // mark read and refresh unread total immediately (keeps badge correct)
     await markReadNow();
   }, [conversationId, me, posting, text]);
 
@@ -218,6 +262,28 @@ export default function DMConversationPage() {
 
   const you = useMemo(() => me, [me]);
 
+  // Open the menu anchored to the button, positioned inside the list container
+  function openMenuFor(e: React.MouseEvent<HTMLButtonElement>, msgId: number) {
+    const list = listRef.current;
+    if (!list) return;
+
+    const btnRect = e.currentTarget.getBoundingClientRect();
+    const listRect = list.getBoundingClientRect();
+
+    // position inside the scrolling container (absolute)
+    const gap = 8;
+    const top = btnRect.bottom - listRect.top + list.scrollTop + gap;
+    let left = btnRect.right - listRect.left - MENU_W; // right-align to button
+
+    // clamp within container horizontal bounds
+    const minLeft = 8;
+    const maxLeft = Math.max(minLeft, list.clientWidth - MENU_W - 8);
+    left = Math.min(Math.max(left, minLeft), maxLeft);
+
+    setMenuPos({ top, left });
+    setOpenMenuId(msgId);
+  }
+
   return (
     <div className="mx-auto max-w-3xl h-[calc(100vh-140px)] px-4 pt-6 pb-4 flex flex-col">
       {/* Header */}
@@ -234,13 +300,13 @@ export default function DMConversationPage() {
       {/* Messages list */}
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-4 space-y-3"
+        className="relative flex-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-4 space-y-3"
       >
         {msgs.length === 0 ? (
           <div className="text-sm text-neutral-600">Say hi 👋</div>
         ) : (
           msgs.map((m) => {
-            const mine = you && m.sender_id === you;
+            const mine = you !== null && m.sender_id === you;
             return (
               <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                 <div
@@ -262,37 +328,16 @@ export default function DMConversationPage() {
                         }`}
                       >
                         <ClientTime iso={m.created_at} />
-                        {/* three-dots menu on non-own messages */}
                         {!mine && (
                           <div className="relative inline-block">
                             <button
                               type="button"
-                              onClick={() => setMoreForMsgId((open) => (open === m.id ? null : m.id))}
-                              onBlur={() => {
-                                setTimeout(() => {
-                                  setMoreForMsgId((open) => (open === m.id ? null : open));
-                                }, 150);
-                              }}
-                              className={`rounded-full px-2 py-0.5 border ${
-                                mine ? "hidden" : "border-neutral-300 hover:bg-neutral-50"
-                              }`}
+                              onClick={(e) => openMenuFor(e, m.id)}
+                              className="rounded-full px-2 py-0.5 border border-neutral-300 hover:bg-neutral-50"
                               title="More"
                             >
                               …
                             </button>
-                            {moreForMsgId === m.id && (
-                              <div className="absolute z-20 mt-2 w-44 rounded-xl border border-neutral-200 bg-white shadow-lg overflow-hidden">
-                                <button
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-neutral-50"
-                                  onClick={async () => {
-                                    setMoreForMsgId(null);
-                                    await reportUser(m.sender_id, m.id);
-                                  }}
-                                >
-                                  Report user
-                                </button>
-                              </div>
-                            )}
                           </div>
                         )}
                       </div>
@@ -303,6 +348,21 @@ export default function DMConversationPage() {
             );
           })
         )}
+
+        {/* Portal menu (renders inside the list container so it scrolls with content) */}
+        <PortalMenu
+          open={openMenuId !== null}
+          top={menuPos.top}
+          left={menuPos.left}
+          container={listRef.current}
+          onClose={() => setOpenMenuId(null)}
+          onReport={async () => {
+            const msg = msgs.find((x) => x.id === openMenuId!);
+            setOpenMenuId(null);
+            if (!msg) return;
+            await reportUser(msg.sender_id, msg.id);
+          }}
+        />
       </div>
 
       {/* Composer */}

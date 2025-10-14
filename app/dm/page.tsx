@@ -90,7 +90,7 @@ export default function DMListPage() {
           {rows.map((r) => (
             <li
               key={r.conversation_id}
-              className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white p-4"
+              className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-[color:var(--color-brand)] hover:bg-[color:var(--color-brand)]/10 hover:shadow"
             >
               <button
                 className="flex-1 text-left"

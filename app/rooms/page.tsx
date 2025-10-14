@@ -19,10 +19,8 @@ export default async function RoomsIndexPage() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-5xl px-6 py-14">
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-neutral-900">
-          Chat Rooms
-        </h1>
+      <div className="mx-auto max-w-3xl px-5 py-12">
+        <Header />
         <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           Failed to load rooms: {error.message}
         </div>
@@ -31,62 +29,96 @@ export default async function RoomsIndexPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-12">
-      {/* Header */}
-      <div className="text-center mb-8 md:mb-10">
-        <h1 className="text-[34px] md:text-[44px] font-bold tracking-tight">
-          <span className="text-neutral-900">Chat </span>
-          <span className="text-[var(--color-brand)]">Rooms</span>
-        </h1>
-        <p className="mt-2 text-neutral-600 text-[15px] md:text-base">
-          Find your community. Discuss topics freely and safely.
-        </p>
-      </div>
-
-      {/* List */}
-      <ul className="grid gap-4 md:gap-5">
-        {(rooms ?? []).map((r) => (
-          <li key={r.id}>
-            <Link
-              href={`/rooms/${r.id}`}
-              className={[
-                "group block rounded-3xl border shadow-sm",
-                "border-[#FFE0C8] bg-white/90",
-                "px-5 py-5 md:px-7 md:py-6",
-                "transition-all duration-200 ease-out",
-                "hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-lg",
-                "hover:bg-[#FFF8F2] hover:border-[#FFCFAE]",
-                "focus:outline-none focus:ring-2 focus:ring-[#FFB98A]/60",
-              ].join(" ")}
-            >
-              <div className="flex items-center justify-between gap-4">
-                <h2 className="truncate text-xl md:text-2xl font-medium tracking-tight text-neutral-900">
-                  {r.name}
-                </h2>
-
-                <span
-                  className={[
-                    "inline-flex items-center justify-center rounded-full px-4 md:px-5 h-10 md:h-11",
-                    "text-sm md:text-[15px] font-medium",
-                    "bg-[var(--color-brand)] text-white",
-                    "transition-all duration-200 ease-out",
-                    "group-hover:brightness-95 group-active:scale-95",
-                    "shadow-[0_6px_18px_rgba(255,140,0,0.25)]",
-                  ].join(" ")}
-                >
-                  Enter
-                </span>
-              </div>
-            </Link>
-          </li>
-        ))}
-      </ul>
-
-      {(rooms ?? []).length === 0 && (
-        <div className="mt-8 rounded-3xl border border-[#FFE0C8] bg-[#FFF6EE] p-6 text-center text-neutral-700">
-          No rooms yet. Check back soon!
-        </div>
+    <div className="mx-auto max-w-3xl px-5 py-12">
+      <Header />
+      {(!rooms || rooms.length === 0) ? (
+        <EmptyState />
+      ) : (
+        <ul className="mt-6 space-y-4">
+          {rooms.map((r) => (
+            <li key={r.id}>
+              <RoomCard id={r.id} name={r.name} created_at={r.created_at} />
+            </li>
+          ))}
+        </ul>
       )}
     </div>
+  );
+}
+
+function Header() {
+  return (
+    <div className="text-center">
+      <h1 className="text-4xl font-black tracking-tight">
+        <span className="text-neutral-900">Chat </span>
+        <span className="text-orange-500">Rooms</span>
+      </h1>
+      <p className="mt-2 text-sm text-neutral-600">
+        Find your community. Discuss topics freely and safely.
+      </p>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="mt-8 rounded-2xl border border-neutral-200 bg-white p-8 text-center">
+      <p className="text-neutral-700">No rooms yet.</p>
+      <p className="text-neutral-500 text-sm">Create one to get started.</p>
+    </div>
+  );
+}
+
+function RoomCard({
+  id,
+  name,
+}: {
+  id: string;
+  name: string;
+  created_at?: string;
+}) {
+  return (
+    <Link
+      href={`/rooms/${id}`}
+      className="
+        group block rounded-2xl border border-orange-100 bg-white
+        shadow-sm transition-all
+        hover:-translate-y-0.5 hover:border-orange-500 hover:bg-orange-500 hover:shadow-md
+        focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200
+      "
+      aria-label={`Open room: ${name}`}
+    >
+      <div className="flex items-center gap-4 p-5 md:p-6">
+        {/* Left dot */}
+        <div
+          className="
+            h-3 w-3 shrink-0 rounded-full bg-orange-500/80
+            transition group-hover:bg-white
+          "
+          aria-hidden
+        />
+        {/* Title */}
+        <h2
+          className="
+            flex-1 text-lg md:text-xl font-semibold tracking-tight
+            text-neutral-900 transition-colors
+            group-hover:text-white
+          "
+        >
+          {name}
+        </h2>
+
+        {/* Chevron */}
+        <span
+          className="
+            translate-x-0 text-neutral-400 transition
+            group-hover:translate-x-1 group-hover:text-white
+          "
+          aria-hidden
+        >
+          →
+        </span>
+      </div>
+    </Link>
   );
 }

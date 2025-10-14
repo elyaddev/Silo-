@@ -32,7 +32,7 @@ export default function HomePage() {
       {/* FEATURE ROW */}
       <section className="mt-24 grid gap-10 sm:grid-cols-3">
         <FeatureCard
-          title="Anon Handles"
+          title="Anonymity"
           text="Be heard without being seen."
           color="orange"
         />
